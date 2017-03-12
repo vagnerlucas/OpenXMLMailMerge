@@ -66,7 +66,9 @@
     <Compile Include="LoadTest.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="doc\BIND.docx" />
+    <None Include="doc\BIND.docx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
@@ -76,7 +78,9 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="doc\image.png" />
+    <Content Include="doc\image.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <Choose>
     <When Condition="'$(VisualStudioVersion)' == '10.0' And '$(IsCodedUITest)' == 'True'">

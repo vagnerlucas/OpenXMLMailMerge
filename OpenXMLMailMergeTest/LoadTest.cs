@@ -10,8 +10,8 @@ namespace OpenXMLMailMergeTest
     [TestClass]
     public class LoadTest
     {
-        const string bindFile = @"D:\vrl\backup\Documents\vrl\lab\TestLab\OpenXMLMailMerge\OpenXMLMailMerge\OpenXMLMailMergeTest\doc\image.docx";// BIND.docx";
-        const string imageFile = @"D:\vrl\backup\Documents\vrl\lab\TestLab\OpenXMLMailMerge\OpenXMLMailMerge\OpenXMLMailMergeTest\doc\image.png";
+        const string bindFile = @".\doc\BIND.docx";// BIND.docx";
+        const string imageFile = @".\doc\image.png";
 
         private OXMailMerge GetOXObject()
         {
@@ -57,7 +57,7 @@ namespace OpenXMLMailMergeTest
 
             try
             {
-                var tempPath = @"D:\vrl\backup\Documents\vrl\lab\TestLab\OpenXMLMailMerge\OpenXMLMailMerge\OpenXMLMailMergeTest\doc\";
+                var tempPath = @".\doc\";
                 openXMLMailMerge.Document.LoadFromBytes(fileBytes, tempPath);
                 openXMLMailMerge.Process();
                 openXMLMailMerge.Document.SaveToFile(tempPath + "vrl.docx");

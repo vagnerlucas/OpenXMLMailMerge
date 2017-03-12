@@ -210,6 +210,33 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.ML
             //ContentManager.Content.Document.Save();
         }
 
+        private void ProcessTable(ref DataTable data, ref ElementBuilder elementBuilder, ref Table table)
+        {
+            var captionTableRow = elementBuilder.CreateRow();
+            foreach (DataColumn item in data.Columns)
+            {
+                var colCaption = elementBuilder.CreateParagraph(item.Caption, JustificationValues.Left, null);
+                var cell = elementBuilder.CreateCell();
+                cell.Append(colCaption);
+                captionTableRow.Append(cell);
+            }
+            table.Append(captionTableRow);
+
+            foreach (DataRow item in data.Rows)
+            {
+                var tableRow = elementBuilder.CreateRow();
+                foreach (var i in item.ItemArray)
+                {
+                    var cell = elementBuilder.CreateCell();
+                    var cellValue = elementBuilder.CreateParagraph(i.ToString(), JustificationValues.Left, null);
+                    cell.Append(cellValue);
+                    tableRow.Append(cell);
+                }
+
+                table.Append(tableRow);
+            }
+        }
+
         /// <summary>
         /// Executes table replacement.
         /// </summary>
@@ -224,34 +251,10 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.ML
                         var data = TryReplaceTable(t.Text);
                         if (data != null)
                         {
-                            
                             var elementBuilder = ContentManager.ElementBuilder;
                             var table = elementBuilder.CreateTable(data.Columns.Count);
-                            var captionTableRow = elementBuilder.CreateRow();
 
-                            foreach (DataColumn item in data.Columns)
-                            {
-                                var colCaption = elementBuilder.CreateParagraph(item.Caption, JustificationValues.Left, null);
-                                var cell = elementBuilder.CreateCell();
-                                cell.Append(colCaption);
-                                captionTableRow.Append(cell);
-                            }
-                            table.Append(captionTableRow);
-
-                            foreach (DataRow item in data.Rows)
-                            {
-                                var tableRow = elementBuilder.CreateRow();
-                                foreach (var i in item.ItemArray)
-                                {
-                                    var cell = elementBuilder.CreateCell();
-                                    var cellValue = elementBuilder.CreateParagraph(i.ToString(), JustificationValues.Left, null);
-                                    cell.Append(cellValue);
-                                    tableRow.Append(cell);
-                                }
-
-                                table.Append(tableRow);
-                            }
-
+                            ProcessTable(ref data, ref elementBuilder, ref table);
                             ContentManager.Content.HeaderParts.FirstOrDefault().Header.AppendChild(table);
                             t.Remove();
                         }
@@ -266,35 +269,13 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.ML
                     s.Descendants<Text>().ToList().ForEach(t =>
                     {
                         var data = TryReplaceTable(t.Text);
+
                         if (data != null)
                         {
                             var elementBuilder = ContentManager.ElementBuilder;
                             var table = elementBuilder.CreateTable(data.Columns.Count);
-                            var captionTableRow = elementBuilder.CreateRow();
 
-                            foreach (DataColumn item in data.Columns)
-                            {
-                                var colCaption = elementBuilder.CreateParagraph(item.Caption, JustificationValues.Left, null);
-                                var cell = elementBuilder.CreateCell();
-                                cell.Append(colCaption);
-                                captionTableRow.Append(cell);
-                            }
-                            table.Append(captionTableRow);
-
-                            foreach (DataRow item in data.Rows)
-                            {
-                                var tableRow = elementBuilder.CreateRow();
-                                foreach (var i in item.ItemArray)
-                                {
-                                    var cell = elementBuilder.CreateCell();
-                                    var cellValue = elementBuilder.CreateParagraph(i.ToString(), JustificationValues.Left, null);
-                                    cell.Append(cellValue);
-                                    tableRow.Append(cell);
-                                }
-
-                                table.Append(tableRow);
-                            }
-                            
+                            ProcessTable(ref data, ref elementBuilder, ref table);
                             ContentManager.Content.FooterParts.FirstOrDefault().Footer.Append(table);
                             t.Remove();
                         }
@@ -311,31 +292,9 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.ML
                     {
                         var elementBuilder = ContentManager.ElementBuilder;
                         var table = elementBuilder.CreateTable(data.Columns.Count);
-                        var captionTableRow = elementBuilder.CreateRow();
 
-                        foreach (DataColumn item in data.Columns)
-                        {
-                            var colCaption = elementBuilder.CreateParagraph(item.Caption, JustificationValues.Left, null);
-                            var cell = elementBuilder.CreateCell();
-                            cell.Append(colCaption);
-                            captionTableRow.Append(cell);
-                        }
-                        table.Append(captionTableRow);
+                        ProcessTable(ref data, ref elementBuilder, ref table);
 
-                        foreach (DataRow item in data.Rows)
-                        {
-                            var tableRow = elementBuilder.CreateRow();
-                            foreach (var i in item.ItemArray)
-                            {
-                                var cell = elementBuilder.CreateCell();
-                                var cellValue = elementBuilder.CreateParagraph(i.ToString(), JustificationValues.Left, null);
-                                cell.Append(cellValue);
-                                tableRow.Append(cell);
-                            }
-
-                            table.Append(tableRow);
-                        }
-                       
                         w.RemoveAllChildren();
 
                         //BUG: Try to solve the validation error: Description="The element has unexpected child element 'http://schemas.openxmlformats.org/wordprocessingml/2006/main:tbl'."
@@ -344,7 +303,7 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.ML
                 });
             });
 
-            
+
             //ContentManager.Content.Document.Save();
         }
 

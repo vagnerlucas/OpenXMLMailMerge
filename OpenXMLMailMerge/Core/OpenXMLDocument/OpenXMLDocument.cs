@@ -40,7 +40,7 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument
         /// <summary>
         /// The data dictionary with the merge content and attributes to be processed.
         /// </summary>
-        protected DataDictionary Dictionary { get; set; } = new DataDictionary();
+        protected DataDictionary Dictionary { get; } = new DataDictionary();
 
         /// <summary>
         /// Manages the document content.
@@ -179,9 +179,8 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument
         /// </summary>
         public virtual void Terminate()
         {
-            ContentManager.Document.Close();
-            ContentManager = null;
-            Dictionary = null;
+            ContentManager.Dispose();
+            Dictionary.Clear();
             if (DocumentSettings.RemoveFileCopy)
             {
                 try
