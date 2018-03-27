@@ -7,7 +7,7 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.Configuration
     /// User defined processor configuration to handle document's field with parameters
     /// Example of parameter (without spaces): field @ parameter1=0 @ parameter2=1...
     /// </summary>
-    internal class Configuration
+    internal sealed class Configuration
     {
         /// <summary>
         /// Generic (dynamic) configuration. Free to be defined.
@@ -19,7 +19,7 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.Configuration
         /// </summary>
         /// <param name="arg">String to be parsed.</param>
         /// <returns>A dictionary with parameters and values defined by user.</returns>
-        internal virtual Configuration GenerateConfiguration(string arg)
+        internal Configuration GenerateConfiguration(string arg)
         {
             arg = arg
                     .Replace(StringConst.SPECIAL_STR_L, string.Empty)
@@ -43,8 +43,6 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.Configuration
         private Dictionary<string, Dictionary<string, object>> GetParameters(string arg)
         {
             var result = new Dictionary<string, Dictionary<string, object>>();
-
-            string key, value;
             string masterkey = string.Empty;
 
             var splitValue = arg.Split(StringConst.ID_DELIMITER_CHAR);
@@ -56,12 +54,10 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.Configuration
                     if (item.Contains(StringConst.KEY_VALUE_DELIMITER))
                     {
                         var toSplit = item.Split(StringConst.KEY_VALUE_DELIMITER);
-                        if (toSplit.Length > 0)
-                        {
-                            key = toSplit[0].ToUpper();
-                            value = toSplit[1];
-                            result[masterkey].Add(key, value);
-                        }
+                        if (toSplit.Length <= 0) continue;
+                        var key = toSplit[0].ToUpper();
+                        string value = toSplit[1];
+                        result[masterkey].Add(key, value);
                     }
                     else
                     {

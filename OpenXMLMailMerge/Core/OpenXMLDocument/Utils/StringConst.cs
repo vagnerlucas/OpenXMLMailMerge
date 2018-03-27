@@ -6,6 +6,11 @@
     public static class StringConst
     {
         /// <summary>
+        /// Regex to identify a mergefield from xml node
+        /// </summary>
+        public const string MERGEFIELD_REGEX = "(?<=MERGEFIELD)(.*)(?=MERGEFORMAT)";
+
+        /// <summary>
         /// MSWord inputs this char in mergefield.
         /// </summary>
         public const string SPECIAL_STR_L = "«";

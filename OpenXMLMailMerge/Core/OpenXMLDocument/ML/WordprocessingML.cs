@@ -9,6 +9,7 @@ using System.Data;
 using System.IO;
 using OpenXMLMailMerge.Core.OpenXMLDocument.Configuration;
 using System.Collections.Generic;
+using DocumentFormat.OpenXml;
 using OpenXMLMailMerge.Core.OpenXMLDocument.Document.Element;
 
 namespace OpenXMLMailMerge.Core.OpenXMLDocument.ML
@@ -79,16 +80,15 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.ML
                 {
                     foreach (var value in item.Value)
                     {
-                        if (arg.ToUpper().Contains(value.Key.ToString().ToUpper()))
-                        {
-                            var regexText = new Regex(value.Key);
-                            string toReplace = Convert.ToString(value.Value);
-                            var result = regexText.Replace(arg, toReplace);
-                            result = result
-                                    .Replace(StringConst.SPECIAL_STR_L, string.Empty)
-                                    .Replace(StringConst.SPECIAL_STR_R, string.Empty);
-                            return result;
-                        }
+                        if (!arg.ToUpper().Contains(value.Key.ToString().ToUpper())) continue;
+
+                        var regexText = new Regex(value.Key);
+                        string toReplace = Convert.ToString(value.Value);
+                        var result = regexText.Replace(arg, toReplace);
+                        result = result
+                            .Replace(StringConst.SPECIAL_STR_L, string.Empty)
+                            .Replace(StringConst.SPECIAL_STR_R, string.Empty);
+                        return result;
                     }
                 }
             }
@@ -104,14 +104,13 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.ML
         {
             foreach (var item in Dictionary)
             {
-                if (item.Key == MailMergeDataTypeEnum.Table)
+                if (item.Key != MailMergeDataTypeEnum.Table) continue;
+
+                foreach (var value in item.Value)
                 {
-                    foreach (var value in item.Value)
+                    if (arg.ToUpper().Contains(value.Key.ToString().ToUpper()))
                     {
-                        if (arg.ToUpper().Contains(value.Key.ToString().ToUpper()))
-                        {
-                            return value.Value as DataTable;
-                        }
+                        return value.Value as DataTable;
                     }
                 }
             }
@@ -124,31 +123,107 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.ML
         /// </summary>
         protected virtual void ProcessRegex()
         {
-            ContentManager.Content.HeaderParts.Where(w => w.Header.Descendants<SimpleField>().Count() > 0).ToList().ForEach(w =>
-            {
-                w.Header.Descendants<Text>().ToList().ForEach(t =>
-                {
-                    t.Text = TryReplaceString(t.Text).ToString();
-                });
-            });
+            var regexText = new Regex(StringConst.MERGEFIELD_REGEX);
 
-            ContentManager.Content.FooterParts.Where(w => w.Footer.Descendants<SimpleField>().Count() > 0).ToList().ForEach(w =>
-            {
-                w.Footer.Descendants<Text>().ToList().ForEach(t =>
+            ContentManager.Content.Document.MainDocumentPart.Document.Descendants<Paragraph>().Where(w => regexText.Match(w.InnerXml).Success).ToList().ForEach(w =>
                 {
-                    t.Text = TryReplaceString(t.Text).ToString();
+                    w.Descendants<Text>().ToList().ForEach(t => t.Text = TryReplaceString(t.Text));
                 });
-            });
 
-            ContentManager.Content.Document.MainDocumentPart.Document.Descendants<SimpleField>().ToList().ForEach(w =>
+        }
+
+        private void ProcessDataFromSimpleFieldList(OpenXmlPart part, List<SimpleField> simpleFieldList)
+        {
+            foreach (var simpleField in simpleFieldList)
             {
-                w.Descendants<Text>().ToList().ForEach(t =>
-                {
-                    t.Text = TryReplaceString(t.Text).ToString();
-                });
-            });
+                var paragraph = simpleField.Parent as Paragraph;
+                var key = simpleField.InnerText;
+                var newText = TryReplaceString(key);
 
-            //ContentManager.Content.Document.Save();
+                var run = paragraph?.Descendants<Run>().FirstOrDefault();
+
+                if (key != newText)
+                {
+                    paragraph?.Append(new Run(new ElementBuilder().CreateText(newText)) { RunProperties = run?.RunProperties?.Clone() as RunProperties });
+                }
+
+                var data = TryReplaceImage(key);
+
+                if (data == null) continue;
+
+                var imageElementConfig = ImageElementConfig.ParseConfig(key);
+                var image = ContentManager.ElementBuilder.CreateImage(data, part, imageElementConfig);
+                simpleField.Remove();
+                paragraph?.Append(new Run(image) { RunProperties = run?.RunProperties?.Clone() as RunProperties });
+            }
+        }
+
+        /// <summary>
+        /// Process the header parts of the document
+        /// </summary>
+        protected virtual void ProcessHeaders()
+        {
+            ContentManager.Content.HeaderParts.Where(w => w.Header.Descendants<SimpleField>().Any()).ToList().ForEach(
+                w =>
+                {
+                    var simpleFieldList = w.Header.Descendants<SimpleField>().ToList();
+                    ProcessDataFromSimpleFieldList(w, simpleFieldList);
+                });
+        }
+
+        /// <summary>
+        /// Process the footer parts of the document
+        /// </summary>
+        protected virtual void ProcessFooters()
+        {
+            ContentManager.Content.FooterParts.Where(w => w.Footer.Descendants<SimpleField>().Any()).ToList().ForEach(
+                w =>
+                {
+                    var simpleFieldList = w.Footer.Descendants<SimpleField>().ToList();
+                    ProcessDataFromSimpleFieldList(w, simpleFieldList);
+                });
+        }
+
+        /// <summary>
+        /// Clear merge fields to prevent any change of view from ms-office when trying to find the data source of those mergefields
+        /// </summary>
+        protected virtual void ClearFooters()
+        {
+            ContentManager.Content.FooterParts.Where(w => w.Footer.Descendants<SimpleField>().Any()).ToList().ForEach(
+                w =>
+                {
+
+                    foreach (var paragraph in w.Footer.Descendants<Paragraph>())
+                    {
+                        paragraph.RemoveAllChildren<SimpleField>();
+                    }
+                });
+        }
+
+        /// <summary>
+        /// Clear merge fields to prevent any change of view from ms-office when trying to find the data source of those mergefields
+        /// </summary>
+        protected virtual void ClearHeaders()
+        {
+            ContentManager.Content.HeaderParts.Where(w => w.Header.Descendants<SimpleField>().Any()).ToList().ForEach(
+                w =>
+                {
+
+                    foreach (var paragraph in w.Header.Descendants<Paragraph>())
+                    {
+                        paragraph.RemoveAllChildren<SimpleField>();
+                    }
+                });
+        }
+
+        /// <summary>
+        /// Process the document regex binds, images and tables
+        /// </summary>
+        protected virtual void ProcessDocument()
+        {
+            ProcessRegex();
+            ProcessImage();
+            ProcessTable();
         }
 
         /// <summary>
@@ -156,58 +231,17 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.ML
         /// </summary>
         protected virtual void ProcessImage()
         {
-            ContentManager.Content.HeaderParts.Where(w => w.Header.Descendants<SimpleField>().Count() > 0).ToList().ForEach(w =>
+            ContentManager.Content.Document.MainDocumentPart.Document.Descendants<Text>().ToList().ForEach(w =>
             {
-                w.Header.Descendants<SimpleField>().ToList().ForEach(s =>
+                var data = TryReplaceImage(w.Text);
+                if (data != null)
                 {
-                    s.Descendants<Text>().ToList().ForEach(t =>
-                    {
-                        var data = TryReplaceImage(t.Text);
-                        if (data != null)
-                        {
-                            var image = ContentManager.ElementBuilder.CreateImage(data, w);
-                            t.Parent.Parent.Parent.Append(new Run(image));
-                            t.Text = string.Empty;
-                        }
-                    });
-                });
+                    var imageElementConfig = ImageElementConfig.ParseConfig(w.Text);
+                    var image = ContentManager.ElementBuilder.CreateImage(data, ContentManager.Content, imageElementConfig);
+                    w.Parent?.Parent?.Append(new Run(image));
+                    w.Remove();
+                }
             });
-
-            ContentManager.Content.FooterParts.Where(w => w.Footer.Descendants<SimpleField>().Count() > 0).ToList().ForEach(w =>
-            {
-                w.Footer.Descendants<SimpleField>().ToList().ForEach(s =>
-                {
-                    s.Descendants<Text>().ToList().ForEach(t =>
-                    {
-                        var data = TryReplaceImage(t.Text);
-                        if (data != null)
-                        {
-                            var image = ContentManager.ElementBuilder.CreateImage(data, w);
-                            t.Parent.Parent.Parent.Append(new Run(image));
-                            t.Remove();
-                        }
-                    });
-                });
-            });
-
-            ContentManager.Content.Document.MainDocumentPart.Document.Descendants<SimpleField>().ToList().ForEach(w =>
-            {
-                w.Descendants<Text>().ToList().ForEach(t =>
-                {
-                    var data = TryReplaceImage(t.Text);
-                    if (data != null)
-                    {
-                        var imageElementConfig = new ImageElementConfig();
-                        imageElementConfig.ParseConfig(t.Text);
-                        var image = ContentManager.ElementBuilder.CreateImage(data, ContentManager.Content, imageElementConfig);
-                        w.Parent.Append(new Run(image));
-                        t.Remove();
-                    }
-                });
-
-            });
-
-            //ContentManager.Content.Document.Save();
         }
 
         private void ProcessTable(ref DataTable data, ref ElementBuilder elementBuilder, ref Table table)
@@ -242,52 +276,10 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.ML
         /// </summary>
         protected virtual void ProcessTable()
         {
-            ContentManager.Content.HeaderParts.Where(w => w.Header.Descendants<SimpleField>().Count() > 0).ToList().ForEach(w =>
-            {
-                w.Header.Descendants<SimpleField>().ToList().ForEach(s =>
+            ContentManager.Content.Document.MainDocumentPart.Document.Descendants<Text>().ToList().ForEach(w =>
                 {
-                    s.Descendants<Text>().ToList().ForEach(t =>
-                    {
-                        var data = TryReplaceTable(t.Text);
-                        if (data != null)
-                        {
-                            var elementBuilder = ContentManager.ElementBuilder;
-                            var table = elementBuilder.CreateTable(data.Columns.Count);
+                    var data = TryReplaceTable(w.Text);
 
-                            ProcessTable(ref data, ref elementBuilder, ref table);
-                            ContentManager.Content.HeaderParts.FirstOrDefault().Header.AppendChild(table);
-                            t.Remove();
-                        }
-                    });
-                });
-            });
-
-            ContentManager.Content.FooterParts.Where(w => w.Footer.Descendants<SimpleField>().Count() > 0).ToList().ForEach(w =>
-            {
-                w.Footer.Descendants<SimpleField>().ToList().ForEach(s =>
-                {
-                    s.Descendants<Text>().ToList().ForEach(t =>
-                    {
-                        var data = TryReplaceTable(t.Text);
-
-                        if (data != null)
-                        {
-                            var elementBuilder = ContentManager.ElementBuilder;
-                            var table = elementBuilder.CreateTable(data.Columns.Count);
-
-                            ProcessTable(ref data, ref elementBuilder, ref table);
-                            ContentManager.Content.FooterParts.FirstOrDefault().Footer.Append(table);
-                            t.Remove();
-                        }
-                    });
-                });
-            });
-
-            ContentManager.Content.Document.MainDocumentPart.Document.Descendants<SimpleField>().ToList().ForEach(w =>
-            {
-                w.Descendants<Text>().ToList().ForEach(t =>
-                {
-                    var data = TryReplaceTable(t.Text);
                     if (data != null)
                     {
                         var elementBuilder = ContentManager.ElementBuilder;
@@ -300,11 +292,8 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.ML
                         //BUG: Try to solve the validation error: Description="The element has unexpected child element 'http://schemas.openxmlformats.org/wordprocessingml/2006/main:tbl'."
                         ContentManager.Content.Document.Body.Append(table);
                     }
-                });
-            });
-
-
-            //ContentManager.Content.Document.Save();
+                }
+            );
         }
 
         /// <summary>
@@ -314,13 +303,13 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.ML
         {
             base.Process();
 
-            //Processing types
+            //Processing types, headers and footers
 
-            ProcessRegex();
-
-            ProcessImage();
-
-            ProcessTable();
+            ProcessDocument();
+            ProcessHeaders();
+            ProcessFooters();
+            ClearFooters();
+            ClearHeaders();
 
             //OpenXmlValidator validator = new OpenXmlValidator();
             //var errors = validator.Validate(ContentManager.Content);
@@ -334,17 +323,9 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.ML
         /// </summary>
         private void Save()
         {
-            var header = ContentManager.Content.Document.MainDocumentPart.HeaderParts.FirstOrDefault();
-            if (header != null)
-                if (header.Header != null)
-                    header.Header.Save();
-
-            var footer = ContentManager.Content.Document.MainDocumentPart.FooterParts.FirstOrDefault();
-            if (footer != null)
-                if (footer.Footer != null)
-                    footer.Footer.Save();
-
-            ContentManager.Content.Document.Save();
+            ContentManager?.Content?.Document?.Save();
+            ContentManager.Content?.Document?.MainDocumentPart?.HeaderParts?.ToList().ForEach(h => h.Header?.Save());
+            ContentManager?.Content?.Document?.MainDocumentPart?.FooterParts?.ToList().ForEach(f => f.Footer?.Save());
         }
 
         /// <summary>

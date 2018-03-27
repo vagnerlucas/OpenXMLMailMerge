@@ -10,7 +10,7 @@ namespace OpenXMLMailMergeTest
     [TestClass]
     public class LoadTest
     {
-        const string bindFile = @".\doc\BIND.docx";// BIND.docx";
+        const string bindFile = @".\doc\BIND2.docx";// BIND.docx";
         const string imageFile = @".\doc\image.png";
 
         private OXMailMerge GetOXObject()

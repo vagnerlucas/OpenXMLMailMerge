@@ -7,7 +7,7 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.Document
     /// <summary>
     /// OpenXmlDocument helper to handle the document's content.
     /// </summary>
-    public class DocumentHandler : IDisposable
+    public sealed class DocumentHandler : IDisposable
     {
         /// <summary>
         /// The OpenXmlPackage itself.
@@ -29,21 +29,20 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.Document
         /// Disposable pattern
         /// </summary>
         /// <param name="disposing"></param>
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
-            if (!disposedValue)
+            if (disposedValue) return;
+
+            Document?.Close();
+
+            if (disposing)
             {
-                Document?.Close();
-
-                if (disposing)
-                {
-                    Document = null;
-                    Content = null;
-                    ElementBuilder = null;
-                }
-
-                disposedValue = true;
+                Document = null;
+                Content = null;
+                ElementBuilder = null;
             }
+
+            disposedValue = true;
         }
 
         // This code added to correctly implement the disposable pattern.

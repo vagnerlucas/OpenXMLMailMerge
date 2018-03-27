@@ -1,16 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace OpenXMLMailMerge.Core.OpenXMLDocument.Document.Element
+﻿namespace OpenXMLMailMerge.Core.OpenXMLDocument.Document.Element
 {
     /// <summary>
     /// Image element definitions.
     /// </summary>
     public class ImageElementConfig
     {
+     
+        private ImageElementConfig() { }
+        
         /// <summary>
         /// Width
         /// </summary>
@@ -24,29 +21,34 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.Document.Element
         /// Parse the Image element definition.
         /// </summary>
         /// <param name="arg">String with parameters and values to be parsed.</param>
-        public void ParseConfig(string arg)
+        public static ImageElementConfig ParseConfig(string arg)
         {
             var config = new Configuration.Configuration().GenerateConfiguration(arg);
-            var imageElementConfig = new ImageElementConfig();
-            foreach (var item in config.GenericConfiguration.Configuration)
+
+            if (config.GenericConfiguration?.Configuration?.Count == 0)
+                return null;
+
+            var result = new ImageElementConfig();
+
+            foreach (var item in config.GenericConfiguration?.Configuration)
             {
                 foreach (var value in item.Value)
                 {
                     if (value.Key == "WIDTH")
                     {
-                        var width = 0;
-                        Int32.TryParse(value.Value, out width);
-                        Width = width;
+                        int.TryParse(value.Value, out int width);
+                        result.Width = width;
                     }
 
                     if (value.Key == "HEIGHT")
                     {
-                        var height = 0;
-                        Int32.TryParse(value.Value, out height);
-                        Height = height;
+                        int.TryParse(value.Value, out int height);
+                        result.Height = height;
                     }
                 }
             }
+
+            return result;
         }
     }
 }

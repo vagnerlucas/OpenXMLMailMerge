@@ -14,6 +14,7 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.Document.Element
     /// </summary>
     internal class ImageElement
     {
+        private static int DEFAULT_MIN_SIZE = 42;
         /// <summary>
         /// Creates a Drawing OpenXml element.
         /// </summary>
@@ -29,13 +30,13 @@ namespace OpenXMLMailMerge.Core.OpenXMLDocument.Document.Element
             if (data.Length == 0 || data == null)
                 return null;
 
-            if (imageElementConfig == null)
-            {
-                imageElementConfig = new ImageElementConfig() { Height = 42, Width = 42 };
-            }
+            //if (imageElementConfig == null)
+            //{
+            //    imageElementConfig = new ImageElementConfig() { Height = 42, Width = 42 };
+            //}
 
-            long LCX = imageElementConfig.Width * 9525L;
-            long LCY = imageElementConfig.Height * 9525L;
+            long LCX = (imageElementConfig?.Width ?? DEFAULT_MIN_SIZE) * 9525L;
+            long LCY = (imageElementConfig?.Height ?? DEFAULT_MIN_SIZE) * 9525L;
 
             MemoryStream stream = new MemoryStream();
             stream.Write(data, 0, data.Length);
