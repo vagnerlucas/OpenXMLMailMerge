@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{8BA61D67-A4CA-4C43-BF45-C47CFFA54437}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenXmlMailMerge", "src\OpenXmlMailMerge\OpenXmlMailMerge.csproj", "{7534FFEB-59A8-4910-8B6B-4784DF616241}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{D542C63B-C284-41AA-B0C4-4F87634EC3EB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenXmlMailMerge.Tests", "tests\OpenXmlMailMerge.Tests\OpenXmlMailMerge.Tests.csproj", "{660EC17F-FBB3-40FD-867A-F9D11130E982}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7534FFEB-59A8-4910-8B6B-4784DF616241}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7534FFEB-59A8-4910-8B6B-4784DF616241}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7534FFEB-59A8-4910-8B6B-4784DF616241}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7534FFEB-59A8-4910-8B6B-4784DF616241}.Release|Any CPU.Build.0 = Release|Any CPU
+		{660EC17F-FBB3-40FD-867A-F9D11130E982}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{660EC17F-FBB3-40FD-867A-F9D11130E982}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{660EC17F-FBB3-40FD-867A-F9D11130E982}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{660EC17F-FBB3-40FD-867A-F9D11130E982}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{7534FFEB-59A8-4910-8B6B-4784DF616241} = {8BA61D67-A4CA-4C43-BF45-C47CFFA54437}
+		{660EC17F-FBB3-40FD-867A-F9D11130E982} = {D542C63B-C284-41AA-B0C4-4F87634EC3EB}
+	EndGlobalSection
+EndGlobal

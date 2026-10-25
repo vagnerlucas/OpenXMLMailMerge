@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>disable</Nullable>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0"/>
+        <PackageReference Include="MSTest.TestAdapter" Version="3.6.4"/>
+        <PackageReference Include="MSTest.TestFramework" Version="3.6.4"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\OpenXmlMailMerge\OpenXmlMailMerge.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="Fixtures\BIND.docx" CopyToOutputDirectory="PreserveNewest"/>
+        <None Include="Fixtures\image.png" CopyToOutputDirectory="PreserveNewest"/>
+        <None Include="Fixtures\Images\**" CopyToOutputDirectory="PreserveNewest"/>
+    </ItemGroup>
+
+</Project>
