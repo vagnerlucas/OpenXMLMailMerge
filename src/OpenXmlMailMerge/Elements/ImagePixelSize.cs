@@ -46,7 +46,7 @@ namespace OpenXmlMailMerge.Elements
                 {
                     width = ReadInt32LittleEndian(data, 18);
                     // A negative height marks a top-down bitmap.
-                    height = System.Math.Abs(ReadInt32LittleEndian(data, 22));
+                    height = Math.Abs(ReadInt32LittleEndian(data, 22));
                 }
             }
             else if (IsTiff(data))

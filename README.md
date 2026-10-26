@@ -6,16 +6,16 @@ Merge data into Word (`.docx`) templates. You design the template in Microsoft W
 library replaces those fields with text, images or tables. It's built on
 the [Open XML SDK](https://github.com/dotnet/Open-XML-SDK), so Word doesn't need to be installed.
 
-> **Status: pre-release (`0.x`).** The public API will change before `1.0`, and the current version has known
+> **Status: pre-release (`0.x`).** The public API may still change before `1.0`, and the current version has known
 > limitations (see below). It isn't published on NuGet yet.
 
 ## What it does
 
-| Binding | You supply                                          | The field becomes                                                          |
-|---------|-----------------------------------------------------|----------------------------------------------------------------------------|
-| `Text`  | Any value (text, numbers, dates)                    | The value as text, formatted in the template's language                    |
-| `Image` | `byte[]` of a PNG, JPEG, GIF, BMP, TIFF, EMF or WMF | An inline picture at the image's own size                                  |
-| `Table` | `System.Data.DataTable`                             | A table with a header row and one row per data row, styled by the template |
+| Binding | You supply                                                  | The field becomes                                                          |
+|---------|-------------------------------------------------------------|----------------------------------------------------------------------------|
+| `Text`  | Any value (text, numbers, dates)                            | The value as text, formatted in the template's language                    |
+| `Image` | The bytes of a PNG, JPEG, GIF, BMP, TIFF, EMF or WMF        | An inline picture at the image's own size                                  |
+| `Table` | A `TableValue` (or a `DataTable` through `TableValue.From`) | A table with a header row and one row per data row, styled by the template |
 
 Fields are processed in the document body, headers and footers.
 
@@ -34,6 +34,11 @@ dotnet test
 Every test that merges a document also validates it against the Open XML schema. The merged documents are kept in
 `tests/OpenXmlMailMerge.Tests/bin/Debug/net10.0/Output/`, one per test, so you can open them in Word. CI runs the tests
 on Linux, Windows and macOS, and attaches those documents to each run.
+
+The public API is recorded in `src/OpenXmlMailMerge/PublicAPI.Shipped.txt` and `PublicAPI.Unshipped.txt`, nullable
+annotations included. A public change that isn't recorded there fails the build (CI builds with warnings as errors), so an
+API change is always deliberate. Record a new member in `PublicAPI.Unshipped.txt`; the IDE's quick fix for `RS0016` writes
+the line.
 
 To produce a local NuGet package:
 
@@ -90,51 +95,116 @@ template decides how it looks:
 
 Values merged into text fields and table cells are formatted in the template's language: the language set on the
 field's text, else the document's default language, else the invariant culture. The machine running the merge doesn't
-change the result.
+change the result. `MergeOptions.Culture` overrides it.
 
 ## Usage
 
 ```csharp
 using OpenXmlMailMerge;
 
-var merge = new OxMailMerge(DocumentType.Doc);
-merge.Document.AddToDictionary(MailMergeDataTypeEnum.Text, "CustomerName", "Jane Doe");
-merge.Document.AddToDictionary(MailMergeDataTypeEnum.Image, "Logo", File.ReadAllBytes("logo.png"));
-merge.Document.AddToDictionary(MailMergeDataTypeEnum.Table, "Items", itemsDataTable);
+var data = new MergeData()
+    .Text("CustomerName", "Jane Doe")
+    .Text("Total", 1234.5m)                               // formatted in the template's language
+    .Image("Logo", File.ReadAllBytes("logo.png"))
+    .Table("Items", TableValue.From(itemsDataTable));     // or new TableValue(columns, rows)
 
-try
-{
-    await merge.Document.LoadFromFileAsync("template.docx");
-    merge.Process();
-    await merge.Document.SaveToFileAsync("result.docx");
-}
-finally
-{
-    merge.Terminate();                    // releases the in-memory package
-}
+var merger = new DocumentMerger();                        // reusable and thread-safe
+MergeResult result = merger.Merge(File.ReadAllBytes("template.docx"), data);
+File.WriteAllBytes("result.docx", result.Document);
 ```
 
-The merge runs entirely in memory: loading copies the template into a private buffer, and the template is never
-modified. Load and save the way that fits your code:
+With streams, for example in ASP.NET Core, use the async overload. It reads the template to its end, writes the merged
+document to the output, and closes neither stream:
 
-| Source / destination                                                  | Load                              | Save                            |
-|-----------------------------------------------------------------------|-----------------------------------|---------------------------------|
-| `byte[]`                                                              | `LoadFromBytes(bytes)`            | `GetBytes()`                    |
-| `Stream` (for example, ASP.NET Core `Request.Body` / `Response.Body`) | `LoadFromStreamAsync(stream, ct)` | `SaveToStreamAsync(stream, ct)` |
-| File                                                                  | `LoadFromFileAsync(path, ct)`     | `SaveToFileAsync(path, ct)`     |
+```csharp
+MergeReport report = await merger.MergeAsync(templateStream, Response.Body, data, cancellationToken);
+```
 
-Only methods that do I/O are async. `Process()` is synchronous because it's CPU-bound work on an in-memory document. You
-can save more than once; each save includes every change made so far.
+The merge runs entirely in memory, on a private copy of the template; the template is never modified. Only
+`MergeAsync` is async, because only it does I/O.
 
-Use one `OxMailMerge` instance per document. Instances aren't thread-safe.
+A `DocumentMerger` keeps nothing between merges, so one instance can serve a whole application, for example as a
+singleton in dependency injection. A `MergeData` can be merged into any number of templates.
+
+The output is deterministic: the same template and data always produce the same bytes, so results can be cached, hashed
+or compared in tests.
+
+### The report
+
+Every merge returns a report of what didn't match, to catch a typo in the template or in your code:
+
+- `UnboundFields`: fields that got no data, for example `«Adress»` when the data says `Address`. Bound fields that can't
+  be merged (nested in another field, or spread over paragraphs) are listed too, and so are fields that
+  `UnboundFieldBehavior.Remove` took out.
+- `UnusedBindings`: names in your data that no field used.
+
+These are information, not errors, unless you set `UnboundFields = UnboundFieldBehavior.Throw`. Data without any binding
+is valid: the template comes back with its fields untouched.
+
+### Options
+
+```csharp
+var merger = new DocumentMerger(new MergeOptions
+{
+    UnboundFields = UnboundFieldBehavior.Remove,
+    Culture = CultureInfo.GetCultureInfo("en-US"),
+});
+```
+
+| Option              | Default             | Effect                                                                                                                                                                      |
+|---------------------|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `UnboundFields`     | `Keep`              | What happens to a field without data. `Keep` leaves its placeholder (`«Name»`). `Remove` deletes the field and its placeholder. `Throw` fails the merge and writes nothing. |
+| `Culture`           | `null` (template's) | The culture numbers and dates are formatted with.                                                                                                                           |
+| `MaxPartCharacters` | `50000000`          | The largest any XML part of the template may grow to once decompressed. Stops decompression bombs: small templates whose XML inflates to gigabytes. `0` disables the check. |
+| `ValidateOutput`    | `false`             | Validate the merged document against the Open XML schema, and throw `MergeException` instead of returning an invalid one. Slower, because it reads the whole document.      |
+
+`Remove` can't safely take out a field nested in another field or spread over paragraphs; those stay, and the report
+lists them.
+
+### Inspecting a template
+
+`Inspect` lists a template's merge fields without merging anything, for example to check a template before using it, or
+to show its fields in a UI:
+
+```csharp
+foreach (var field in merger.Inspect(File.ReadAllBytes("template.docx")).Fields)
+    Console.WriteLine($"{field.Name} in {field.PartUri}, mergeable: {field.IsMergeable}");
+```
+
+Each field comes with its parameters (`WIDTH`, `STYLE`, ...), whether Word stored it as a simple or a complex field, and
+whether a merge can fill it: a field nested in another field or spread over paragraphs can't be.
+
+### Logging
+
+`DocumentMerger` logs through [Microsoft.Extensions.Logging](https://learn.microsoft.com/dotnet/core/extensions/logging),
+so logs go wherever your application sends them: the console, OpenTelemetry (and from there New Relic, Datadog, ...),
+Application Insights, CloudWatch, Serilog sinks, and so on. With dependency injection the logger is passed in for you;
+otherwise pass one:
+
+```csharp
+using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
+var merger = new DocumentMerger(logger: loggerFactory.CreateLogger<DocumentMerger>());
+```
+
+Without a logger, nothing is logged. Merges log at `Debug` (start, duration, size, unbound fields and unused bindings),
+plus a `Warning` when a binding matches a field that can't be merged. Logs carry field names and sizes, never merged
+values.
+
+### Errors
+
+Invalid arguments throw right away: an empty or duplicate name (names ignore case), an empty image, a table row with the
+wrong number of values, or an option out of range. Problems with the template throw `MergeException`:
+
+- the template isn't a valid `.docx`;
+- a part is larger than `MaxPartCharacters` (`PartUri` names it);
+- fields got no data under `UnboundFieldBehavior.Throw` (`FieldName` and `PartUri` name the first one);
+- the result isn't valid under `ValidateOutput` (`PartUri` names the part).
 
 ## Known limitations
 
 - **Nested and multi-paragraph fields are left as they are.** A merge field nested in another field
   (`{ IF { MERGEFIELD Name } ... }`) or spread over more than one paragraph isn't merged.
 - **Footnotes and endnotes aren't merged.** Only the body, headers and footers are.
-- **`Process()` needs at least one binding.** With none, it throws `InvalidOperationException` instead of leaving the
-  document as it is.
 - **Some images get a default size of 42×42 px** unless the field name sets one: a WMF without the placeable header
   (it carries no physical size), and any image whose header can't be read. Bytes in a format the library doesn't
   recognize are embedded as they are and labelled `image/jpeg`, which Word can't display.
@@ -143,18 +213,17 @@ Use one `OxMailMerge` instance per document. Instances aren't thread-safe.
 - **Tables are generated, not designed in the template.** You choose their text formatting and table style, but you
   can't lay out a row in Word and have it repeated yet. A table style must be defined in the document: Word only stores
   the styles a document uses, so apply the style once in the template (to any table) before naming it in `STYLE`.
-- **The whole package is held in memory**, plus one copy for each save. See [docs/SECURITY.md](docs/SECURITY.md) for
-  limits to apply to untrusted templates.
+- **The whole package is held in memory** during a merge, and `Merge` adds one copy of the result (`MergeAsync` writes
+  straight from the package instead). See [docs/SECURITY.md](docs/SECURITY.md) for limits to apply to untrusted
+  templates.
 
 ## Roadmap
 
-- A stateless API: `Merge(template, data) → document`
-- Resource limits for untrusted templates ([S4](docs/SECURITY.md))
-- Deterministic ids for images and relationships
+- More limits for untrusted input: template, image and table sizes ([S4](docs/SECURITY.md))
 - Repeating regions (`TableStart:Name` / `TableEnd:Name`) that reuse a styled template row
 - Merge fields nested in other fields (`IF`, `INCLUDETEXT`, ...), footnotes and endnotes
 - Image resolution (DPI)
-- Golden-file tests and an option to validate output at runtime
+- Golden-file tests
 
 ## How this refactor was made
 
@@ -168,7 +237,8 @@ In short, the project moved to modern .NET with an SDK-style layout and gained:
 - exact field-name matching, for simple and complex fields;
 - images and tables placed where their field is, with images at their own size in every supported format;
 - tables and values that follow the template's formatting, styles and language;
-- a smaller public API;
+- a new, stateless public API (`DocumentMerger`) with options, a merge report and template inspection, its surface
+  tracked by an analyzer;
 - a test suite that validates every document it produces, with CI on Linux, Windows and macOS.
 
 > *A note from Claude:* every bug fixed here was reproduced first, and the new tests were run against the old code to

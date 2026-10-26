@@ -29,7 +29,8 @@ namespace OpenXmlMailMerge.Fields
         /// </summary>
         /// <param name="root">Element to search, such as a document, header or footer.</param>
         /// <param name="shouldConvert">Decides, from the field instruction, whether the field is converted.</param>
-        internal static void ConvertToSimpleFields(OpenXmlElement root, Func<string, bool> shouldConvert)
+        /// <returns>The simple fields created, in document order.</returns>
+        internal static List<SimpleField> ConvertToSimpleFields(OpenXmlElement root, Func<string, bool> shouldConvert)
         {
             // Every element holding the run that starts a field: paragraphs, hyperlinks, and so on.
             var parents = root.Descendants<FieldChar>()
@@ -39,11 +40,14 @@ namespace OpenXmlMailMerge.Fields
                 .Distinct()
                 .ToList();
 
+            var converted = new List<SimpleField>();
             foreach (var parent in parents)
-                ConvertInParent(parent, shouldConvert);
+                converted.AddRange(ConvertInParent(parent, shouldConvert));
+
+            return converted;
         }
 
-        private static void ConvertInParent(OpenXmlElement parent, Func<string, bool> shouldConvert)
+        private static IEnumerable<SimpleField> ConvertInParent(OpenXmlElement parent, Func<string, bool> shouldConvert)
         {
             var children = parent.ChildElements.ToList();
 
@@ -78,11 +82,12 @@ namespace OpenXmlMailMerge.Fields
             }
 
             // A begin without its end in this parent spans paragraphs: it was never added, so it stays as it is.
-            foreach (var (fieldBegin, fieldEnd) in fields)
-                TryConvert(children, fieldBegin, fieldEnd, shouldConvert);
+            return fields.Select(field => TryConvert(children, field.Begin, field.End, shouldConvert))
+                .Where(field => field != null)
+                .ToList();
         }
 
-        private static void TryConvert(List<OpenXmlElement> children, int begin, int end, Func<string, bool> shouldConvert)
+        private static SimpleField TryConvert(List<OpenXmlElement> children, int begin, int end, Func<string, bool> shouldConvert)
         {
             var separate = -1;
             for (var i = begin + 1; i < end; i++)
@@ -108,12 +113,12 @@ namespace OpenXmlMailMerge.Fields
                         continue;
                     default:
                         // Anything else (bookmarks, deleted instruction text, ...) would be lost: leave the field alone.
-                        return;
+                        return null;
                 }
             }
 
             if (!shouldConvert(instruction.ToString()))
-                return;
+                return null;
 
             var field = new SimpleField { Instruction = instruction.ToString() };
             if (separate >= 0)
@@ -133,6 +138,8 @@ namespace OpenXmlMailMerge.Fields
             // Without a separate marker, instructionEnd is the end marker and is already removed.
             if (separate >= 0)
                 children[end].Remove();
+
+            return field;
         }
 
         /// <summary>

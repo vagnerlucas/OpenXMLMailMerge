@@ -1,0 +1,59 @@
+#nullable enable
+const OpenXmlMailMerge.MergeOptions.DefaultMaxPartCharacters = 50000000 -> long
+OpenXmlMailMerge.DocumentMerger
+OpenXmlMailMerge.DocumentMerger.DocumentMerger(OpenXmlMailMerge.MergeOptions? options = null, Microsoft.Extensions.Logging.ILogger<OpenXmlMailMerge.DocumentMerger!>? logger = null) -> void
+OpenXmlMailMerge.DocumentMerger.Inspect(System.ReadOnlySpan<byte> template) -> OpenXmlMailMerge.TemplateInfo!
+OpenXmlMailMerge.DocumentMerger.Merge(System.ReadOnlySpan<byte> template, OpenXmlMailMerge.MergeData! data) -> OpenXmlMailMerge.MergeResult!
+OpenXmlMailMerge.DocumentMerger.MergeAsync(System.IO.Stream! template, System.IO.Stream! output, OpenXmlMailMerge.MergeData! data, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<OpenXmlMailMerge.MergeReport!>!
+OpenXmlMailMerge.MergeData
+OpenXmlMailMerge.MergeData.Image(string! name, System.ReadOnlyMemory<byte> image) -> OpenXmlMailMerge.MergeData!
+OpenXmlMailMerge.MergeData.MergeData() -> void
+OpenXmlMailMerge.MergeData.Names.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenXmlMailMerge.MergeData.Table(string! name, OpenXmlMailMerge.TableValue! table) -> OpenXmlMailMerge.MergeData!
+OpenXmlMailMerge.MergeData.Text(string! name, object? value) -> OpenXmlMailMerge.MergeData!
+OpenXmlMailMerge.MergeException
+OpenXmlMailMerge.MergeException.FieldName.get -> string?
+OpenXmlMailMerge.MergeException.MergeException(string! message) -> void
+OpenXmlMailMerge.MergeException.MergeException(string! message, string? fieldName, string? partUri, System.Exception? innerException = null) -> void
+OpenXmlMailMerge.MergeException.MergeException(string! message, System.Exception? innerException) -> void
+OpenXmlMailMerge.MergeException.PartUri.get -> string?
+OpenXmlMailMerge.MergeOptions
+OpenXmlMailMerge.MergeOptions.<Clone>$() -> OpenXmlMailMerge.MergeOptions!
+OpenXmlMailMerge.MergeOptions.Culture.get -> System.Globalization.CultureInfo?
+OpenXmlMailMerge.MergeOptions.Culture.init -> void
+OpenXmlMailMerge.MergeOptions.Equals(OpenXmlMailMerge.MergeOptions? other) -> bool
+OpenXmlMailMerge.MergeOptions.MaxPartCharacters.get -> long
+OpenXmlMailMerge.MergeOptions.MaxPartCharacters.init -> void
+OpenXmlMailMerge.MergeOptions.MergeOptions() -> void
+OpenXmlMailMerge.MergeOptions.UnboundFields.get -> OpenXmlMailMerge.UnboundFieldBehavior
+OpenXmlMailMerge.MergeOptions.UnboundFields.init -> void
+OpenXmlMailMerge.MergeOptions.ValidateOutput.get -> bool
+OpenXmlMailMerge.MergeOptions.ValidateOutput.init -> void
+OpenXmlMailMerge.MergeReport
+OpenXmlMailMerge.MergeReport.UnboundFields.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenXmlMailMerge.MergeReport.UnusedBindings.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenXmlMailMerge.MergeResult
+OpenXmlMailMerge.MergeResult.Document.get -> byte[]!
+OpenXmlMailMerge.MergeResult.Report.get -> OpenXmlMailMerge.MergeReport!
+OpenXmlMailMerge.TableValue
+OpenXmlMailMerge.TableValue.Columns.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenXmlMailMerge.TableValue.Rows.get -> System.Collections.Generic.IReadOnlyList<System.Collections.Generic.IReadOnlyList<object?>!>!
+OpenXmlMailMerge.TableValue.TableValue(System.Collections.Generic.IReadOnlyList<string?>! columns, System.Collections.Generic.IEnumerable<System.Collections.Generic.IReadOnlyList<object?>!>! rows) -> void
+OpenXmlMailMerge.TemplateField
+OpenXmlMailMerge.TemplateField.IsComplex.get -> bool
+OpenXmlMailMerge.TemplateField.IsMergeable.get -> bool
+OpenXmlMailMerge.TemplateField.Name.get -> string!
+OpenXmlMailMerge.TemplateField.Parameters.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>!
+OpenXmlMailMerge.TemplateField.PartUri.get -> string!
+OpenXmlMailMerge.TemplateInfo
+OpenXmlMailMerge.TemplateInfo.Fields.get -> System.Collections.Generic.IReadOnlyList<OpenXmlMailMerge.TemplateField!>!
+OpenXmlMailMerge.UnboundFieldBehavior
+OpenXmlMailMerge.UnboundFieldBehavior.Keep = 0 -> OpenXmlMailMerge.UnboundFieldBehavior
+OpenXmlMailMerge.UnboundFieldBehavior.Remove = 1 -> OpenXmlMailMerge.UnboundFieldBehavior
+OpenXmlMailMerge.UnboundFieldBehavior.Throw = 2 -> OpenXmlMailMerge.UnboundFieldBehavior
+override OpenXmlMailMerge.MergeOptions.Equals(object? obj) -> bool
+override OpenXmlMailMerge.MergeOptions.GetHashCode() -> int
+override OpenXmlMailMerge.MergeOptions.ToString() -> string!
+static OpenXmlMailMerge.MergeOptions.operator !=(OpenXmlMailMerge.MergeOptions? left, OpenXmlMailMerge.MergeOptions? right) -> bool
+static OpenXmlMailMerge.MergeOptions.operator ==(OpenXmlMailMerge.MergeOptions? left, OpenXmlMailMerge.MergeOptions? right) -> bool
+static OpenXmlMailMerge.TableValue.From(System.Data.DataTable! table) -> OpenXmlMailMerge.TableValue!

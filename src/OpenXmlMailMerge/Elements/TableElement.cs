@@ -15,7 +15,7 @@ namespace OpenXmlMailMerge.Elements
         /// <param name="cols">Number of columns.</param>
         /// <param name="tableConfig">Table properties definitions.</param>
         /// <returns>Table OpenXmlElement.</returns>
-        internal static OpenXmlElement CreateTable(int cols = 1, TableElementConfig tableConfig = null)
+        internal static Table CreateTable(int cols = 1, TableElementConfig tableConfig = null)
         {
             tableConfig ??= new TableElementConfig();
 
@@ -48,7 +48,7 @@ namespace OpenXmlMailMerge.Elements
         /// </summary>
         /// <param name="isHeader">True for a header row, which Word repeats at the top of each page the table spans.</param>
         /// <returns>TableRow OpenXmlElement.</returns>
-        internal static OpenXmlElement CreateRow(bool isHeader = false)
+        internal static TableRow CreateRow(bool isHeader = false)
         {
             return isHeader ? new TableRow(new TableRowProperties(new TableHeader())) : new TableRow();
         }
@@ -59,7 +59,7 @@ namespace OpenXmlMailMerge.Elements
         /// <param name="cols">Number of columns.</param>
         /// <param name="columnWidth">Width of each column in twips; 0 for no width.</param>
         /// <returns>TableGrid OpenXmlElement.</returns>
-        internal static OpenXmlElement CreateGrid(int cols = 1, int columnWidth = 0)
+        internal static TableGrid CreateGrid(int cols = 1, int columnWidth = 0)
         {
             var result = new TableGrid();
             for (var i = 0; i < cols; i++)
@@ -77,7 +77,7 @@ namespace OpenXmlMailMerge.Elements
         /// <param name="text">Text value.</param>
         /// <param name="runProperties">Formatting of the text, cloned into the cell; null to use the document's defaults.</param>
         /// <returns>TableCell OpenXmlElement.</returns>
-        internal static OpenXmlElement CreateCell(string text, RunProperties runProperties = null)
+        internal static TableCell CreateCell(string text, RunProperties runProperties = null)
         {
             var run = new Run();
             if (runProperties != null)

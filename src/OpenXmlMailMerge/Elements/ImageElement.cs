@@ -18,13 +18,14 @@ namespace OpenXmlMailMerge.Elements
         /// Creates a Drawing OpenXml element.
         /// </summary>
         /// <param name="data">Byte array of the image data.</param>
-        /// <param name="documentPart">Parent element.</param>
+        /// <param name="documentPart">The part that will hold the drawing; the image becomes one of its parts.</param>
+        /// <param name="drawingId">The drawing id (wp:docPr id), unique in the document.</param>
+        /// <param name="relationshipId">The id of the relationship from <paramref name="documentPart"/> to the image, unique in that part.</param>
         /// <param name="imageElementConfig">Image element definitions.</param>
-        /// <returns>Generic OpenXmlElement.</returns>
-        internal static OpenXmlElement CreateImage(byte[] data, OpenXmlPart documentPart, ImageElementConfig imageElementConfig = null)
+        /// <returns>The inline drawing, or null when there is no image data.</returns>
+        internal static Drawing CreateImage(byte[] data, OpenXmlPart documentPart, uint drawingId, string relationshipId, ImageElementConfig imageElementConfig = null)
         {
-            if (documentPart == null)
-                throw new ArgumentNullException("Invalid document");
+            ArgumentNullException.ThrowIfNull(documentPart);
 
             if (data == null || data.Length == 0)
                 return null;
@@ -44,13 +45,12 @@ namespace OpenXmlMailMerge.Elements
             stream.Seek(0, SeekOrigin.Begin);
 
             var contentType = ImageContentType.Detect(data);
-            var relationshipId = $"r{new Random().Next().ToString()}";
             var imagePart = documentPart.AddNewPart<ImagePart>(contentType, relationshipId);
 
             imagePart.FeedData(stream);
 
-            var randId = new Random().Next();
-            var randomName = randId.ToString();
+            // Word's own naming: "Picture N" for the drawing, the file name for the picture.
+            var name = $"Picture {drawingId}";
 
             var imageElement = new Drawing(
                 new DW.Inline(new DW.Extent { Cx = lcx, Cy = lcy }, //{ Cx = 990000L, Cy = 792000L },
@@ -63,8 +63,8 @@ namespace OpenXmlMailMerge.Elements
                     },
                     new DW.DocProperties
                     {
-                        Id = Convert.ToUInt32(randId),
-                        Name = $"Pic{randomName}"
+                        Id = drawingId,
+                        Name = name
                     },
                     new DW.NonVisualGraphicFrameDrawingProperties(
                         new A.GraphicFrameLocks { NoChangeAspect = true }),
@@ -74,8 +74,8 @@ namespace OpenXmlMailMerge.Elements
                                 new PIC.NonVisualPictureProperties(
                                     new PIC.NonVisualDrawingProperties
                                     {
-                                        Id = Convert.ToUInt32(new Random().Next()),
-                                        Name = $"Img{randomName}.{ImageContentType.GetExtension(contentType)}"
+                                        Id = drawingId,
+                                        Name = $"image{drawingId}.{ImageContentType.GetExtension(contentType)}"
                                     },
                                     new PIC.NonVisualPictureDrawingProperties()),
                                 new PIC.BlipFill(

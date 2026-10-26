@@ -1,56 +1,29 @@
 using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
-using System.Data;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
-using DocumentFormat.OpenXml.Validation;
 using System.Diagnostics;
 using System.Globalization;
 using W = DocumentFormat.OpenXml.Wordprocessing;
 
+using static OpenXmlMailMerge.Tests.TestDocuments;
+
 namespace OpenXmlMailMerge.Tests
 {
     [TestClass]
-    public class LoadTest
+    public class MergeTests
     {
-        private static readonly string BindFile = Path.Combine("Fixtures", "BIND.docx");
-        private static readonly string ImageFile = Path.Combine("Fixtures", "image.png");
-
-        /// <summary>
-        /// Every merged document is kept here (bin/&lt;configuration&gt;/&lt;tfm&gt;/Output) to be opened in Word.
-        /// The folder is emptied at the start of each run.
-        /// </summary>
-        private static readonly string OutputDirectory = Path.Combine(AppContext.BaseDirectory, "Output");
 
         // ReSharper disable once UnusedAutoPropertyAccessor.Global
         public TestContext TestContext { get; set; }
 
-        [ClassInitialize]
-        public static void ClassInitialize(TestContext context)
-        {
-            if (Directory.Exists(OutputDirectory))
-                Directory.Delete(OutputDirectory, true);
-
-            Directory.CreateDirectory(OutputDirectory);
-        }
-
         private string OutputPath(string suffix = null)
         {
-            var name = suffix == null ? TestContext.TestName : $"{TestContext.TestName}_{suffix}";
-            foreach (var c in Path.GetInvalidFileNameChars().Concat(['$', '*', '?', '"', '\\', '/', ':', '<', '>', '|', ' ']))
-            {
-                name = name?.Replace(c, '_');
-            }
-
-            var path = Path.Combine(OutputDirectory, name + ".docx");
-            TestContext.WriteLine($"Output: {path}");
-            return path;
+            return TestOutput.PathFor(TestContext, suffix);
         }
 
         /// <summary>
@@ -63,51 +36,14 @@ namespace OpenXmlMailMerge.Tests
             AssertValid(data);
         }
 
-        private static void AssertValid(byte[] data)
+        private static MergeData BindData()
         {
-            using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
-            var errors = new OpenXmlValidator().Validate(document)
-            .Select(e => $"{e.Part?.Uri} {e.Path?.XPath}: {e.Description}")
-            .ToList();
-
-            Assert.AreEqual(0, errors.Count, "Invalid document:" + Environment.NewLine + string.Join(Environment.NewLine, errors));
-        }
-
-        private static OxMailMerge GetOxObject()
-        {
-            var imageData = File.ReadAllBytes(ImageFile);
-
-            var dt = new DataTable();
-            dt.Columns.Add(new DataColumn("COL1", typeof(string)));
-            dt.Columns.Add(new DataColumn("COL2", typeof(int)));
-            dt.Columns.Add(new DataColumn("COL3", typeof(DateTime)));
-            dt.Columns.Add(new DataColumn("COL4", typeof(decimal)));
-
-            for (var i = 0; i < 1; i++)
-            {
-                var row = dt.NewRow();
-                row["COL1"] = $"ROW {i.ToString()}";
-                row["COL2"] = i;
-                row["COL3"] = DateTime.Now;
-                row["COL4"] = Convert.ToDecimal(i);
-                dt.Rows.Add(row);
-            }
-
-            var openXmlMailMerge = new OxMailMerge(DocumentType.Doc);
-            openXmlMailMerge.Document.AddToDictionary(MailMergeDataTypeEnum.Text, "HEADER", "Vagner");
-            openXmlMailMerge.Document.AddToDictionary(MailMergeDataTypeEnum.Text, "FOOTER", "Lucas");
-            openXmlMailMerge.Document.AddToDictionary(MailMergeDataTypeEnum.Text, "BIND", "Reis");
-            openXmlMailMerge.Document.AddToDictionary(MailMergeDataTypeEnum.Image, "IMG", imageData);
-            openXmlMailMerge.Document.AddToDictionary(MailMergeDataTypeEnum.Table, "TABLE", dt);
-
-            return openXmlMailMerge;
-        }
-
-        private static string ReadPart(byte[] package, string partName)
-        {
-            using var zip = new ZipArchive(new MemoryStream(package), ZipArchiveMode.Read);
-            using var reader = new StreamReader(zip.GetEntry(partName)!.Open());
-            return reader.ReadToEnd();
+            return new MergeData()
+                .Text("HEADER", "Vagner")
+                .Text("FOOTER", "Lucas")
+                .Text("BIND", "Reis")
+                .Image("IMG", File.ReadAllBytes(ImageFile))
+                .Table("TABLE", new TableValue(["COL1", "COL2", "COL3", "COL4"], [["ROW 0", 0, new DateTime(2026, 10, 25, 13, 5, 0), 0m]]));
         }
 
         private static void AssertMerged(byte[] data)
@@ -122,16 +58,7 @@ namespace OpenXmlMailMerge.Tests
 
         private string MergeBindText(string key, string value, string outputSuffix = null)
         {
-            var openXmlMailMerge = new OxMailMerge(DocumentType.Doc);
-            openXmlMailMerge.Document.AddToDictionary(MailMergeDataTypeEnum.Text, key, value);
-
-            openXmlMailMerge.Document.LoadFromBytes(File.ReadAllBytes(BindFile));
-            openXmlMailMerge.Process();
-            var data = openXmlMailMerge.Document.GetBytes();
-            openXmlMailMerge.Terminate();
-
-            SaveAndValidate(data, outputSuffix);
-            return ReadPart(data, "word/document.xml");
+            return MergeBody(File.ReadAllBytes(BindFile), new MergeData().Text(key, value), outputSuffix);
         }
 
         [TestMethod]
@@ -156,7 +83,7 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Text_KeyIsPrefixOfAnotherField_MatchesOnlyExactField()
         {
-            var body = MergeBody(CreateTemplate("NAME", "NAME_FULL"), MailMergeDataTypeEnum.Text, "NAME", "Jane");
+            var body = MergeBody(CreateTemplate("NAME", "NAME_FULL"), new MergeData().Text("NAME", "Jane"));
 
             Assert.AreEqual(1, Regex.Matches(body, "Jane").Count);
             StringAssert.Contains(body, "«NAME_FULL»");
@@ -177,7 +104,7 @@ namespace OpenXmlMailMerge.Tests
             var header = new W.Paragraph(new W.Run(new W.Text("HEADER notes: ") { Space = SpaceProcessingModeValues.Preserve }), Field("HEADER"));
             var template = CreateDocument([new W.Paragraph(new W.Run(new W.Text("Body")))], [header]);
 
-            var data = Merge(template, MailMergeDataTypeEnum.Text, "HEADER", "Vagner");
+            var data = Merge(template, new MergeData().Text("HEADER", "Vagner"));
 
             Assert.AreEqual("HEADER notes: Vagner", FirstHeaderParagraphText(data));
         }
@@ -187,7 +114,7 @@ namespace OpenXmlMailMerge.Tests
         {
             var template = CreateDocument([ParagraphWithBoldField("NAME")]);
 
-            var data = Merge(template, MailMergeDataTypeEnum.Text, "NAME", "Jane");
+            var data = Merge(template, new MergeData().Text("NAME", "Jane"));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             var paragraph = document.MainDocumentPart?.Document.Body?.GetFirstChild<W.Paragraph>();
@@ -201,7 +128,7 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Text_BoundFieldsAreRemoved_UnboundFieldsStay()
         {
-            var body = MergeBody(CreateTemplate("NAME", "OTHER"), MailMergeDataTypeEnum.Text, "NAME", "Jane");
+            var body = MergeBody(CreateTemplate("NAME", "OTHER"), new MergeData().Text("NAME", "Jane"));
 
             Assert.IsFalse(Regex.IsMatch(body, "w:instr=\"[^\"]*NAME"), "The bound field is still in the document.");
             Assert.IsTrue(Regex.IsMatch(body, "w:instr=\"[^\"]*OTHER"), "The unbound field was removed.");
@@ -232,110 +159,17 @@ namespace OpenXmlMailMerge.Tests
             Assert.IsFalse(body.Contains("Reis"), "A '.' in the key must not match any character.");
         }
 
-        /// <summary>
-        /// A w:fldSimple with the instruction "MERGEFIELD name" and the display text «name».
-        /// </summary>
-        private static W.SimpleField Field(string name)
+        private byte[] Merge(byte[] template, MergeData data, string outputSuffix = null)
         {
-            // Word quotes a field name that contains spaces.
-            var quoted = name.Contains(' ') ? $"\"{name}\"" : name;
-            return new W.SimpleField(new W.Run(new W.Text($"«{name}»"))) { Instruction = $" MERGEFIELD {quoted} \\* MERGEFORMAT " };
+            var document = new DocumentMerger().Merge(template, data).Document;
+
+            SaveAndValidate(document, outputSuffix);
+            return document;
         }
 
-        /// <summary>
-        /// A field whose result run has the given formatting.
-        /// </summary>
-        private static W.SimpleField Field(string name, W.RunProperties runProperties)
+        private string MergeBody(byte[] template, MergeData data, string outputSuffix = null)
         {
-            var field = Field(name);
-            field.GetFirstChild<W.Run>()?.PrependChild(runProperties);
-            return field;
-        }
-
-        /// <summary>
-        /// A4 page with Word's default margins, the same as BIND.docx.
-        /// </summary>
-        private static W.SectionProperties PageSetup(params OpenXmlElement[] headerReferences)
-        {
-            return new W.SectionProperties(headerReferences.Concat([
-                new W.PageSize { Width = 11906, Height = 16838 },
-                new W.PageMargin { Top = 1417, Right = 1701, Bottom = 1417, Left = 1701, Header = 708, Footer = 708, Gutter = 0 }
-            ]));
-        }
-
-        /// <summary>
-        /// Creates a template from body blocks. Like documents saved by Word, the body ends with a w:sectPr.
-        /// </summary>
-        /// <param name="blocks">Body content.</param>
-        /// <param name="headers">Content of each header part, referenced in order as the default and first-page header.</param>
-        /// <exception cref="ArgumentNullException"></exception>
-        private static byte[] CreateDocument(OpenXmlElement[] blocks, params W.Paragraph[][] headers)
-        {
-            return CreateDocument(blocks, headers, []);
-        }
-
-        /// <summary>
-        /// Creates a template from body blocks, headers and footers.
-        /// </summary>
-        /// <param name="blocks">Body content.</param>
-        /// <param name="headers">Content of each header part, referenced in order as the default and first-page header.</param>
-        /// <param name="footers">Content of each footer part, referenced in order as the default and first-page footer.</param>
-        /// <param name="styles">Style definitions, or null for a document without a styles part.</param>
-        private static byte[] CreateDocument(OpenXmlElement[] blocks, W.Paragraph[][] headers, W.Paragraph[][] footers, W.Styles styles = null)
-        {
-            var stream = new MemoryStream();
-            using (var document = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
-            {
-                var main = document.AddMainDocumentPart();
-                if (styles != null)
-                    main.AddNewPart<StyleDefinitionsPart>().Styles = styles;
-                var types = new[] { W.HeaderFooterValues.Default, W.HeaderFooterValues.First };
-                var headerReferences = headers.Select((content, i) =>
-                {
-                    var part = main.AddNewPart<HeaderPart>();
-                    // ReSharper disable once CoVariantArrayConversion
-                    part.Header = new W.Header(content);
-                    return (OpenXmlElement)new W.HeaderReference { Type = types[i], Id = main.GetIdOfPart(part) };
-                });
-                var footerReferences = footers.Select((content, i) =>
-                {
-                    var part = main.AddNewPart<FooterPart>();
-                    // ReSharper disable once CoVariantArrayConversion
-                    part.Footer = new W.Footer(content);
-                    return (OpenXmlElement)new W.FooterReference { Type = types[i], Id = main.GetIdOfPart(part) };
-                });
-
-                main.Document = new W.Document(new W.Body(blocks.Append(PageSetup([.. headerReferences, .. footerReferences]))));
-            }
-
-            return stream.ToArray();
-        }
-
-        /// <summary>
-        /// Creates a template whose body has one paragraph per field.
-        /// </summary>
-        private static byte[] CreateTemplate(params string[] fieldNames)
-        {
-            return CreateDocument([.. fieldNames.Select(name => (OpenXmlElement)new W.Paragraph(Field(name)))]);
-        }
-
-        private byte[] Merge(byte[] template, MailMergeDataTypeEnum dataType, string key, object value, string outputSuffix = null)
-        {
-            var openXmlMailMerge = new OxMailMerge(DocumentType.Doc);
-            openXmlMailMerge.Document.AddToDictionary(dataType, key, value);
-
-            openXmlMailMerge.Document.LoadFromBytes(template);
-            openXmlMailMerge.Process();
-            var data = openXmlMailMerge.Document.GetBytes();
-            openXmlMailMerge.Terminate();
-
-            SaveAndValidate(data, outputSuffix);
-            return data;
-        }
-
-        private string MergeBody(byte[] template, MailMergeDataTypeEnum dataType, string key, object value, string outputSuffix = null)
-        {
-            return ReadPart(Merge(template, dataType, key, value, outputSuffix), "word/document.xml");
+            return ReadPart(Merge(template, data, outputSuffix), "word/document.xml");
         }
 
         private static string[] ChildNames(OpenXmlElement element)
@@ -348,18 +182,15 @@ namespace OpenXmlMailMerge.Tests
             return Regex.Matches(xml, $"<{element}[ >]").Count;
         }
 
-        private static DataTable OneColumnTable()
+        internal static TableValue OneColumnTable()
         {
-            var dt = new DataTable();
-            dt.Columns.Add("COL1");
-            dt.Rows.Add("ROW 0");
-            return dt;
+            return new TableValue(["COL1"], [["ROW 0"]]);
         }
 
         [TestMethod]
         public void Image_KeyIsPrefixOfAnotherField_MatchesOnlyExactField()
         {
-            var body = MergeBody(CreateTemplate("IMG", "IMG_LOGO"), MailMergeDataTypeEnum.Image, "IMG", File.ReadAllBytes(ImageFile));
+            var body = MergeBody(CreateTemplate("IMG", "IMG_LOGO"), new MergeData().Image("IMG", File.ReadAllBytes(ImageFile)));
 
             Assert.AreEqual(1, Count(body, "w:drawing"));
             StringAssert.Contains(body, "«IMG_LOGO»");
@@ -368,7 +199,7 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Image_KeyIsPrefixOfField_DoesNotMatch()
         {
-            var body = MergeBody(File.ReadAllBytes(BindFile), MailMergeDataTypeEnum.Image, "IM", File.ReadAllBytes(ImageFile));
+            var body = MergeBody(File.ReadAllBytes(BindFile), new MergeData().Image("IM", File.ReadAllBytes(ImageFile)));
 
             Assert.AreEqual(0, Count(body, "w:drawing"));
         }
@@ -376,7 +207,7 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Image_FieldWithParameters_MatchesNameBeforeParameters()
         {
-            var body = MergeBody(CreateTemplate("IMG@WIDTH=120@HEIGHT=80"), MailMergeDataTypeEnum.Image, "img", File.ReadAllBytes(ImageFile));
+            var body = MergeBody(CreateTemplate("IMG@WIDTH=120@HEIGHT=80"), new MergeData().Image("img", File.ReadAllBytes(ImageFile)));
 
             Assert.AreEqual(1, Count(body, "w:drawing"));
             StringAssert.Contains(body, $"cx=\"{120 * 9525}\"");
@@ -443,7 +274,7 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Image_WithoutSize_UsesImagePixelSize()
         {
-            var body = MergeBody(File.ReadAllBytes(BindFile), MailMergeDataTypeEnum.Image, "IMG", File.ReadAllBytes(ImageFile));
+            var body = MergeBody(File.ReadAllBytes(BindFile), new MergeData().Image("IMG", File.ReadAllBytes(ImageFile)));
 
             Assert.AreEqual((368L, 368L), ImageSize(body));
         }
@@ -456,7 +287,7 @@ namespace OpenXmlMailMerge.Tests
         [DataRow("tiff-long")]
         public void Image_WithoutSize_ReadsPixelSizeOfFormat(string format)
         {
-            var body = MergeBody(CreateTemplate("IMG"), MailMergeDataTypeEnum.Image, "IMG", ImageHeader(format, 30, 20), format);
+            var body = MergeBody(CreateTemplate("IMG"), new MergeData().Image("IMG", ImageHeader(format, 30, 20)), format);
 
             Assert.AreEqual((30L, 20L), ImageSize(body));
         }
@@ -464,7 +295,7 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Image_UnreadableFormat_UsesDefaultSize()
         {
-            var body = MergeBody(CreateTemplate("IMG"), MailMergeDataTypeEnum.Image, "IMG", ImageHeader("unknown", 0, 0));
+            var body = MergeBody(CreateTemplate("IMG"), new MergeData().Image("IMG", ImageHeader("unknown", 0, 0)));
 
             Assert.AreEqual((42L, 42L), ImageSize(body));
         }
@@ -474,7 +305,7 @@ namespace OpenXmlMailMerge.Tests
         [DataRow("IMG@HEIGHT=50", 100, 50)]
         public void Image_OneDimension_KeepsAspectRatio(string field, int expectedWidth, int expectedHeight)
         {
-            var body = MergeBody(CreateTemplate(field), MailMergeDataTypeEnum.Image, "IMG", ImageHeader("png", 200, 100), field);
+            var body = MergeBody(CreateTemplate(field), new MergeData().Image("IMG", ImageHeader("png", 200, 100)), field);
 
             Assert.AreEqual(((long)expectedWidth, (long)expectedHeight), ImageSize(body));
         }
@@ -484,7 +315,7 @@ namespace OpenXmlMailMerge.Tests
         [DataRow("IMG@Width=120")]
         public void Image_ParameterKeys_IgnoreCase(string field)
         {
-            var body = MergeBody(CreateTemplate(field), MailMergeDataTypeEnum.Image, "IMG", ImageHeader("png", 200, 100), outputSuffix: field);
+            var body = MergeBody(CreateTemplate(field), new MergeData().Image("IMG", ImageHeader("png", 200, 100)), outputSuffix: field);
 
             Assert.AreEqual((120L, 60L), ImageSize(body));
         }
@@ -497,7 +328,7 @@ namespace OpenXmlMailMerge.Tests
             CultureInfo.CurrentCulture = new CultureInfo("tr-TR");
             try
             {
-                var body = MergeBody(CreateTemplate("IMG@width=120@height=30"), MailMergeDataTypeEnum.Image, "IMG", ImageHeader("png", 200, 100));
+                var body = MergeBody(CreateTemplate("IMG@width=120@height=30"), new MergeData().Image("IMG", ImageHeader("png", 200, 100)));
 
                 Assert.AreEqual((120L, 30L), ImageSize(body));
             }
@@ -513,7 +344,7 @@ namespace OpenXmlMailMerge.Tests
         [DataRow("IMG@=5@HEIGHT@WIDTH=", 200, 100)]
         public void Image_InvalidParameters_AreIgnored(string field, int expectedWidth, int expectedHeight)
         {
-            var body = MergeBody(CreateTemplate(field), MailMergeDataTypeEnum.Image, "IMG", ImageHeader("png", 200, 100), outputSuffix: field);
+            var body = MergeBody(CreateTemplate(field), new MergeData().Image("IMG", ImageHeader("png", 200, 100)), outputSuffix: field);
 
             Assert.AreEqual(((long)expectedWidth, (long)expectedHeight), ImageSize(body));
         }
@@ -522,7 +353,7 @@ namespace OpenXmlMailMerge.Tests
         public void Image_WiderThanPage_IsScaledToTextWidth()
         {
             // BIND.docx: page 11906 twips, margins 1701 + 1701, so 8504 twips / 15 = 566 px between the margins.
-            var body = MergeBody(File.ReadAllBytes(BindFile), MailMergeDataTypeEnum.Image, "IMG", ImageHeader("png", 2000, 1000));
+            var body = MergeBody(File.ReadAllBytes(BindFile), new MergeData().Image("IMG", ImageHeader("png", 2000, 1000)));
 
             Assert.AreEqual((566L, 283L), ImageSize(body));
         }
@@ -532,7 +363,7 @@ namespace OpenXmlMailMerge.Tests
         {
             var template = CreateTemplate("IMG@WIDTH=2000@HEIGHT=10");
 
-            var body = MergeBody(template, MailMergeDataTypeEnum.Image, "IMG", ImageHeader("png", 200, 100));
+            var body = MergeBody(template, new MergeData().Image("IMG", ImageHeader("png", 200, 100)));
 
             Assert.AreEqual((2000L, 10L), ImageSize(body));
         }
@@ -540,7 +371,7 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Image_InHeaderAndFooter_UsesImagePixelSize()
         {
-            var data = Merge(File.ReadAllBytes(BindFile), MailMergeDataTypeEnum.Image, "IMG", File.ReadAllBytes(ImageFile));
+            var data = Merge(File.ReadAllBytes(BindFile), new MergeData().Image("IMG", File.ReadAllBytes(ImageFile)));
 
             Assert.AreEqual((368L, 368L), ImageSize(ReadPart(data, "word/header1.xml")));
             Assert.AreEqual((368L, 368L), ImageSize(ReadPart(data, "word/footer1.xml")));
@@ -568,7 +399,7 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Image_InHeader_OneDimension_KeepsAspectRatio()
         {
-            var data = Merge(HeaderTemplate("IMG@WIDTH=120"), MailMergeDataTypeEnum.Image, "IMG", ImageHeader("png", 200, 100));
+            var data = Merge(HeaderTemplate("IMG@WIDTH=120"), new MergeData().Image("IMG", ImageHeader("png", 200, 100)));
 
             Assert.AreEqual((120L, 60L), ImageSize(FirstHeaderXml(data)));
         }
@@ -576,7 +407,7 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Image_InHeader_WiderThanPage_IsScaledToTextWidth()
         {
-            var data = Merge(HeaderTemplate("IMG"), MailMergeDataTypeEnum.Image, "IMG", ImageHeader("png", 2000, 1000));
+            var data = Merge(HeaderTemplate("IMG"), new MergeData().Image("IMG", ImageHeader("png", 2000, 1000)));
 
             Assert.AreEqual((566L, 283L), ImageSize(FirstHeaderXml(data)));
         }
@@ -617,7 +448,7 @@ namespace OpenXmlMailMerge.Tests
                 [[ParagraphWithBoldField("IMG")]],
                 [[ParagraphWithBoldField("IMG")]]);
 
-            var data = Merge(template, MailMergeDataTypeEnum.Image, "IMG", File.ReadAllBytes(ImageFile));
+            var data = Merge(template, new MergeData().Image("IMG", File.ReadAllBytes(ImageFile)));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             var main = document.MainDocumentPart;
@@ -630,7 +461,7 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Image_InBindTemplate_HeaderAndFooterFieldsAreReplacedTheSameWay()
         {
-            var data = Merge(File.ReadAllBytes(BindFile), MailMergeDataTypeEnum.Image, "IMG", File.ReadAllBytes(ImageFile));
+            var data = Merge(File.ReadAllBytes(BindFile), new MergeData().Image("IMG", File.ReadAllBytes(ImageFile)));
 
             foreach (var part in new[] { "word/header1.xml", "word/footer1.xml" })
             {
@@ -651,40 +482,13 @@ namespace OpenXmlMailMerge.Tests
         [DataRow("unknown", "image/jpeg", ".jpeg")]
         public void Image_PartContentType_MatchesImageFormat(string format, string contentType, string extension)
         {
-            var data = Merge(CreateTemplate("IMG"), MailMergeDataTypeEnum.Image, "IMG", ImageHeader(format, 30, 20), outputSuffix: format);
+            var data = Merge(CreateTemplate("IMG"), new MergeData().Image("IMG", ImageHeader(format, 30, 20)), outputSuffix: format);
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             var imagePart = document.MainDocumentPart?.ImageParts.Single();
             Debug.Assert(imagePart != null, nameof(imagePart) + " != null");
             Assert.AreEqual(contentType, imagePart.ContentType);
             StringAssert.EndsWith(imagePart.Uri.OriginalString, extension);
-        }
-
-        private static W.Run FieldMarker(W.FieldCharValues type)
-        {
-            return new W.Run(new W.FieldChar { FieldCharType = type });
-        }
-
-        /// <summary>
-        /// The runs of a complex field, as Word writes them: begin, instruction runs, separate, a bold result «name», end.
-        /// </summary>
-        /// <param name="name">Field name.</param>
-        /// <param name="withResult">False for a field without a separate marker and result.</param>
-        /// <param name="instructionParts">The instruction split over several runs; by default a single " MERGEFIELD name " run.</param>
-        private static OpenXmlElement[] ComplexField(string name, bool withResult = true, params string[] instructionParts)
-        {
-            string[] parts = instructionParts.Length > 0 ? instructionParts : [$" MERGEFIELD {name} \\* MERGEFORMAT "];
-
-            var runs = new List<OpenXmlElement> { FieldMarker(W.FieldCharValues.Begin) };
-            runs.AddRange(parts.Select(part => new W.Run(new W.FieldCode(part) { Space = SpaceProcessingModeValues.Preserve })));
-            if (withResult)
-            {
-                runs.Add(FieldMarker(W.FieldCharValues.Separate));
-                runs.Add(new W.Run(new W.RunProperties(new W.Bold()), new W.Text($"«{name}»")));
-            }
-
-            runs.Add(FieldMarker(W.FieldCharValues.End));
-            return [.. runs];
         }
 
         /// <summary>
@@ -700,19 +504,12 @@ namespace OpenXmlMailMerge.Tests
             ]);
         }
 
-        private static W.Body Body(WordprocessingDocument document)
-        {
-            var body = document.MainDocumentPart?.Document.Body;
-            Debug.Assert(body != null, nameof(body) + " != null");
-            return body;
-        }
-
         [TestMethod]
         public void ComplexField_Text_IsReplacedAtFieldPosition_KeepingResultFormatting()
         {
             var template = CreateDocument([ParagraphWithComplexField(ComplexField("NAME"))]);
 
-            var data = Merge(template, MailMergeDataTypeEnum.Text, "NAME", "Jane");
+            var data = Merge(template, new MergeData().Text("NAME", "Jane"));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             var paragraph = Body(document).GetFirstChild<W.Paragraph>();
@@ -729,7 +526,7 @@ namespace OpenXmlMailMerge.Tests
             var field = ComplexField("NAME", true, " MERGE", "FIELD  NA", "ME \\* MERGEFORMAT ");
             var template = CreateDocument([ParagraphWithComplexField(field)]);
 
-            var data = Merge(template, MailMergeDataTypeEnum.Text, "NAME", "Jane");
+            var data = Merge(template, new MergeData().Text("NAME", "Jane"));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             Assert.AreEqual("Before Jane After", Body(document).GetFirstChild<W.Paragraph>()?.InnerText);
@@ -740,7 +537,7 @@ namespace OpenXmlMailMerge.Tests
         {
             var template = CreateDocument([ParagraphWithComplexField(ComplexField("NAME", withResult: false))]);
 
-            var data = Merge(template, MailMergeDataTypeEnum.Text, "NAME", "Jane");
+            var data = Merge(template, new MergeData().Text("NAME", "Jane"));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             Assert.AreEqual("Before Jane After", Body(document).GetFirstChild<W.Paragraph>()?.InnerText);
@@ -752,7 +549,7 @@ namespace OpenXmlMailMerge.Tests
         {
             var template = CreateDocument([ParagraphWithComplexField(ComplexField("IMG"))]);
 
-            var data = Merge(template, MailMergeDataTypeEnum.Image, "IMG", File.ReadAllBytes(ImageFile));
+            var data = Merge(template, new MergeData().Image("IMG", File.ReadAllBytes(ImageFile)));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             var runs = Body(document).GetFirstChild<W.Paragraph>()?.Elements<W.Run>().ToList();
@@ -766,7 +563,7 @@ namespace OpenXmlMailMerge.Tests
         {
             var template = CreateDocument([new W.Paragraph(ComplexField("TABLE"))]);
 
-            var data = Merge(template, MailMergeDataTypeEnum.Table, "TABLE", OneColumnTable());
+            var data = Merge(template, new MergeData().Table("TABLE", OneColumnTable()));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             CollectionAssert.AreEqual((string[])["tbl", "sectPr"], ChildNames(Body(document)));
@@ -777,7 +574,7 @@ namespace OpenXmlMailMerge.Tests
         {
             var template = CreateDocument([new W.Paragraph(new W.Run(new W.Text("Body")))], [ParagraphWithComplexField(ComplexField("HEADER"))]);
 
-            var data = Merge(template, MailMergeDataTypeEnum.Text, "HEADER", "Vagner");
+            var data = Merge(template, new MergeData().Text("HEADER", "Vagner"));
 
             Assert.AreEqual("Before Vagner After", FirstHeaderParagraphText(data));
         }
@@ -787,7 +584,7 @@ namespace OpenXmlMailMerge.Tests
         {
             var template = CreateDocument([ParagraphWithComplexField(ComplexField("OTHER"))]);
 
-            var data = Merge(template, MailMergeDataTypeEnum.Text, "NAME", "Jane");
+            var data = Merge(template, new MergeData().Text("NAME", "Jane"));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             Assert.AreEqual(3, Body(document).Descendants<W.FieldChar>().Count());
@@ -810,7 +607,7 @@ namespace OpenXmlMailMerge.Tests
             ];
             var template = CreateDocument([new W.Paragraph(field)]);
 
-            var data = Merge(template, MailMergeDataTypeEnum.Text, "NAME", "Jane");
+            var data = Merge(template, new MergeData().Text("NAME", "Jane"));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             Assert.AreEqual(6, Body(document).Descendants<W.FieldChar>().Count());
@@ -823,14 +620,12 @@ namespace OpenXmlMailMerge.Tests
             var runs = ComplexField("NAME");
             var template = CreateDocument([new W.Paragraph(runs[..3]), new W.Paragraph(runs[3..])]);
 
-            var data = Merge(template, MailMergeDataTypeEnum.Text, "NAME", "Jane");
+            var data = Merge(template, new MergeData().Text("NAME", "Jane"));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             Assert.AreEqual(3, Body(document).Descendants<W.FieldChar>().Count());
             Assert.IsFalse(Body(document).InnerText.Contains("Jane"));
         }
-
-        private static readonly string ImagesDirectory = Path.Combine("Fixtures", "Images");
 
         [TestMethod]
         [DataRow("hippopotamus.jpeg", "image/jpeg", ".jpeg")]
@@ -851,7 +646,7 @@ namespace OpenXmlMailMerge.Tests
         [DataRow("61338.wmf", "image/x-wmf", ".wmf")]
         public void Image_RealFile_GetsItsContentType(string file, string contentType, string extension)
         {
-            var data = Merge(CreateTemplate("IMG"), MailMergeDataTypeEnum.Image, "IMG", File.ReadAllBytes(Path.Combine(ImagesDirectory, file)), outputSuffix: file);
+            var data = Merge(CreateTemplate("IMG"), new MergeData().Image("IMG", File.ReadAllBytes(Path.Combine(ImagesDirectory, file))), outputSuffix: file);
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             var imagePart = document.MainDocumentPart?.ImageParts.Single();
@@ -882,7 +677,7 @@ namespace OpenXmlMailMerge.Tests
         [DataRow("64716_image1.wmf", 61, 41)]
         public void Image_RealFile_UsesItsPixelSize(string file, int width, int height)
         {
-            var body = MergeBody(CreateTemplate("IMG"), MailMergeDataTypeEnum.Image, "IMG", File.ReadAllBytes(Path.Combine(ImagesDirectory, file)), outputSuffix: file);
+            var body = MergeBody(CreateTemplate("IMG"), new MergeData().Image("IMG", File.ReadAllBytes(Path.Combine(ImagesDirectory, file))), outputSuffix: file);
 
             Assert.AreEqual(((long)width, (long)height), ImageSize(body));
         }
@@ -905,13 +700,9 @@ namespace OpenXmlMailMerge.Tests
             return CreateDocument([new W.Paragraph(field)], [], [], TemplateStyles(language));
         }
 
-        private static DataTable ValuesTable()
+        private static TableValue ValuesTable()
         {
-            var dt = new DataTable();
-            dt.Columns.Add("Date", typeof(DateTime));
-            dt.Columns.Add("Amount", typeof(decimal));
-            dt.Rows.Add(new DateTime(2026, 10, 25, 13, 5, 0), 1234.5m);
-            return dt;
+            return new TableValue(["Date", "Amount"], [[new DateTime(2026, 10, 25, 13, 5, 0), 1234.5m]]);
         }
 
         private static W.Table FirstTable(WordprocessingDocument document)
@@ -943,7 +734,7 @@ namespace OpenXmlMailMerge.Tests
         {
             var formatting = new W.RunProperties(new W.RunFonts { Ascii = "Arial" }, new W.Bold(), new W.FontSize { Val = "18" });
 
-            var data = Merge(TableTemplate(Field("TABLE", formatting)), MailMergeDataTypeEnum.Table, "TABLE", OneColumnTable());
+            var data = Merge(TableTemplate(Field("TABLE", formatting)), new MergeData().Table("TABLE", OneColumnTable()));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             var runs = FirstTable(document).Descendants<W.Run>().ToList();
@@ -959,7 +750,7 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Table_WithoutFieldFormatting_UsesDocumentDefaults()
         {
-            var data = Merge(TableTemplate(Field("TABLE")), MailMergeDataTypeEnum.Table, "TABLE", OneColumnTable());
+            var data = Merge(TableTemplate(Field("TABLE")), new MergeData().Table("TABLE", OneColumnTable()));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             Assert.IsTrue(FirstTable(document).Descendants<W.Run>().All(r => r.RunProperties == null), "Cells must not get a fixed font or size.");
@@ -972,7 +763,7 @@ namespace OpenXmlMailMerge.Tests
         [DataRow("TABLE@STYLE=My Grid")]
         public void Table_StyleParameter_AppliesTemplateStyle(string field)
         {
-            var data = Merge(TableTemplate(Field(field)), MailMergeDataTypeEnum.Table, "TABLE", OneColumnTable(), outputSuffix: field);
+            var data = Merge(TableTemplate(Field(field)), new MergeData().Table("TABLE", OneColumnTable()), outputSuffix: field);
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             var properties = FirstTable(document).GetFirstChild<W.TableProperties>();
@@ -985,7 +776,7 @@ namespace OpenXmlMailMerge.Tests
         [DataRow("TABLE@STYLE=Missing")]
         public void Table_WithoutKnownStyle_GetsSingleBorders(string field)
         {
-            var data = Merge(TableTemplate(Field(field)), MailMergeDataTypeEnum.Table, "TABLE", OneColumnTable(), outputSuffix: field);
+            var data = Merge(TableTemplate(Field(field)), new MergeData().Table("TABLE", OneColumnTable()), outputSuffix: field);
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             var properties = FirstTable(document).GetFirstChild<W.TableProperties>();
@@ -996,7 +787,7 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Table_HeaderRow_RepeatsOnEachPage_AndColumnsShareTextWidth()
         {
-            var data = Merge(TableTemplate(Field("TABLE")), MailMergeDataTypeEnum.Table, "TABLE", ValuesTable());
+            var data = Merge(TableTemplate(Field("TABLE")), new MergeData().Table("TABLE", ValuesTable()));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             var rows = FirstTable(document).Elements<W.TableRow>().ToList();
@@ -1017,7 +808,7 @@ namespace OpenXmlMailMerge.Tests
             var field = fieldLanguage == null ? Field("TABLE") : Field("TABLE", new W.RunProperties(new W.Languages { Val = fieldLanguage }));
 
             // The merge runs under en-US, which must not leak into the output.
-            var data = WithCulture("en-US", () => Merge(TableTemplate(field, documentLanguage), MailMergeDataTypeEnum.Table, "TABLE", ValuesTable(),
+            var data = WithCulture("en-US", () => Merge(TableTemplate(field, documentLanguage), new MergeData().Table("TABLE", ValuesTable()),
                 outputSuffix: $"{documentLanguage ?? "none"}-{fieldLanguage ?? "none"}"));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
@@ -1029,7 +820,7 @@ namespace OpenXmlMailMerge.Tests
         public void Text_Value_UsesTemplateLanguage()
         {
             // BIND.docx's default language is pt-BR.
-            var body = WithCulture("en-US", () => MergeBody(File.ReadAllBytes(BindFile), MailMergeDataTypeEnum.Text, "BIND", 1234.5m));
+            var body = WithCulture("en-US", () => MergeBody(File.ReadAllBytes(BindFile), new MergeData().Text("BIND", 1234.5m)));
 
             StringAssert.Contains(body, "<w:t>1234,5</w:t>");
         }
@@ -1038,7 +829,7 @@ namespace OpenXmlMailMerge.Tests
         public void Image_RealNonPlaceableWmf_UsesDefaultSize()
         {
             // A WMF without the placeable header has no physical size.
-            var body = MergeBody(CreateTemplate("IMG"), MailMergeDataTypeEnum.Image, "IMG", File.ReadAllBytes(Path.Combine(ImagesDirectory, "61338.wmf")));
+            var body = MergeBody(CreateTemplate("IMG"), new MergeData().Image("IMG", File.ReadAllBytes(Path.Combine(ImagesDirectory, "61338.wmf"))));
 
             Assert.AreEqual((42L, 42L), ImageSize(body));
         }
@@ -1046,7 +837,7 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Table_FieldAloneInParagraph_ReplacesParagraph()
         {
-            var data = Merge(CreateTemplate("TABLE"), MailMergeDataTypeEnum.Table, "TABLE", OneColumnTable());
+            var data = Merge(CreateTemplate("TABLE"), new MergeData().Table("TABLE", OneColumnTable()));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             CollectionAssert.AreEqual(new[] { "tbl", "sectPr" }, ChildNames(document.MainDocumentPart?.Document.Body));
@@ -1055,7 +846,7 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Table_InBindTemplate_IsPlacedAtFieldBeforeSectionProperties()
         {
-            var body = MergeBody(File.ReadAllBytes(BindFile), MailMergeDataTypeEnum.Table, "TABLE", OneColumnTable());
+            var body = MergeBody(File.ReadAllBytes(BindFile), new MergeData().Table("TABLE", OneColumnTable()));
 
             Assert.IsFalse(Regex.IsMatch(body, "w:instr=\"[^\"]*TABLE"), "The table field was not removed.");
             Assert.IsTrue(body.IndexOf("<w:tbl", StringComparison.Ordinal) < body.LastIndexOf("<w:sectPr", StringComparison.Ordinal));
@@ -1066,7 +857,7 @@ namespace OpenXmlMailMerge.Tests
         {
             var template = CreateDocument([new W.Paragraph(new W.Run(new W.Text("Items:")), Field("TABLE"))]);
 
-            var data = Merge(template, MailMergeDataTypeEnum.Table, "TABLE", OneColumnTable());
+            var data = Merge(template, new MergeData().Table("TABLE", OneColumnTable()));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             var body = document.MainDocumentPart?.Document.Body;
@@ -1082,7 +873,7 @@ namespace OpenXmlMailMerge.Tests
                 new W.TableGrid(new W.GridColumn()),
                 new W.TableRow(new W.TableCell(new W.Paragraph(Field("TABLE")))));
 
-            var data = Merge(CreateDocument([outer]), MailMergeDataTypeEnum.Table, "TABLE", OneColumnTable());
+            var data = Merge(CreateDocument([outer]), new MergeData().Table("TABLE", OneColumnTable()));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             var cell = document.MainDocumentPart?.Document.Body?.GetFirstChild<W.Table>()?.Descendants<W.TableCell>().First();
@@ -1097,7 +888,7 @@ namespace OpenXmlMailMerge.Tests
                 new W.Paragraph(new W.Run(new W.Text("Next section")))
             ]);
 
-            var data = Merge(template, MailMergeDataTypeEnum.Table, "TABLE", OneColumnTable());
+            var data = Merge(template, new MergeData().Table("TABLE", OneColumnTable()));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             var body = document.MainDocumentPart?.Document.Body;
@@ -1114,7 +905,7 @@ namespace OpenXmlMailMerge.Tests
                 [new W.Paragraph(new W.Run(new W.Text("Default header")))],
                 [new W.Paragraph(Field("TABLE"))]);
 
-            var data = Merge(template, MailMergeDataTypeEnum.Table, "TABLE", OneColumnTable());
+            var data = Merge(template, new MergeData().Table("TABLE", OneColumnTable()));
 
             using var document = WordprocessingDocument.Open(new MemoryStream(data), false);
             var headers = document.MainDocumentPart?.HeaderParts.Select(p => p.Header).ToList();
@@ -1128,7 +919,7 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Table_KeyIsPrefixOfAnotherField_MatchesOnlyExactField()
         {
-            var body = MergeBody(CreateTemplate("TABLE", "TABLE_TOTALS"), MailMergeDataTypeEnum.Table, "TABLE", OneColumnTable());
+            var body = MergeBody(CreateTemplate("TABLE", "TABLE_TOTALS"), new MergeData().Table("TABLE", OneColumnTable()));
 
             Assert.AreEqual(1, Count(body, "w:tbl"));
             StringAssert.Contains(body, "«TABLE_TOTALS»");
@@ -1137,85 +928,36 @@ namespace OpenXmlMailMerge.Tests
         [TestMethod]
         public void Table_KeyIsPrefixOfField_DoesNotMatch()
         {
-            var body = MergeBody(File.ReadAllBytes(BindFile), MailMergeDataTypeEnum.Table, "TAB", OneColumnTable());
+            var body = MergeBody(File.ReadAllBytes(BindFile), new MergeData().Table("TAB", OneColumnTable()));
 
             Assert.AreEqual(0, Count(body, "w:tbl"));
         }
 
         [TestMethod]
-        public void LoadFromBytes_GetBytes_ReturnsMergedDocument()
+        public void Merge_DoesNotModifyCallerArray()
         {
-            var openXmlMailMerge = GetOxObject();
-
-            openXmlMailMerge.Document.LoadFromBytes(File.ReadAllBytes(BindFile));
-            openXmlMailMerge.Process();
-            var data = openXmlMailMerge.Document.GetBytes();
-            openXmlMailMerge.Terminate();
-
-            SaveAndValidate(data);
-            AssertMerged(data);
-        }
-
-        [TestMethod]
-        public void LoadFromBytes_DoesNotModifyCallerArray()
-        {
-            var openXmlMailMerge = GetOxObject();
             var template = File.ReadAllBytes(BindFile);
             var original = template.ToArray();
 
-            openXmlMailMerge.Document.LoadFromBytes(template);
-            openXmlMailMerge.Process();
-            openXmlMailMerge.Document.GetBytes();
-            openXmlMailMerge.Terminate();
+            Merge(template, BindData());
 
             CollectionAssert.AreEqual(original, template);
         }
 
         [TestMethod]
-        public async Task LoadFromFileAsync_SaveToFileAsync_WritesMergedDocument()
+        public async Task MergeAsync_FileToFile_WritesMergedDocument()
         {
-            var openXmlMailMerge = GetOxObject();
             var outputPath = OutputPath();
 
-            await openXmlMailMerge.Document.LoadFromFileAsync(BindFile);
-            openXmlMailMerge.Process();
-            await openXmlMailMerge.Document.SaveToFileAsync(outputPath);
-            openXmlMailMerge.Terminate();
+            await using (var template = File.OpenRead(BindFile))
+            await using (var output = File.Create(outputPath))
+            {
+                await new DocumentMerger().MergeAsync(template, output, BindData());
+            }
 
             var data = await File.ReadAllBytesAsync(outputPath);
             AssertValid(data);
             AssertMerged(data);
-        }
-
-        [TestMethod]
-        public async Task SaveToStreamAsync_MatchesGetBytes_AndDocumentStaysOpen()
-        {
-            var openXmlMailMerge = GetOxObject();
-
-            await using (var input = File.OpenRead(BindFile))
-            {
-                await openXmlMailMerge.Document.LoadFromStreamAsync(input);
-            }
-            openXmlMailMerge.Process();
-
-            var first = openXmlMailMerge.Document.GetBytes();
-            var output = new MemoryStream();
-            await openXmlMailMerge.Document.SaveToStreamAsync(output);
-            var second = openXmlMailMerge.Document.GetBytes();
-            openXmlMailMerge.Terminate();
-
-            SaveAndValidate(output.ToArray());
-            CollectionAssert.AreEqual(first, output.ToArray());
-            CollectionAssert.AreEqual(first, second);
-            AssertMerged(output.ToArray());
-        }
-
-        [TestMethod]
-        public void GetBytes_WithoutLoad_Throws()
-        {
-            var openXmlMailMerge = GetOxObject();
-
-            Assert.ThrowsException<InvalidOperationException>(() => openXmlMailMerge.Document.GetBytes());
         }
     }
 }

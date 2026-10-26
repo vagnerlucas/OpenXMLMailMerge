@@ -28,6 +28,15 @@
 
     <ItemGroup>
         <PackageReference Include="DocumentFormat.OpenXml" Version="3.3.0"/>
+        <!-- Interfaces only: the application chooses where logs go (console, OpenTelemetry, Application Insights, ...). -->
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12"/>
+        <!-- Records the public API in PublicAPI.*.txt and warns about any change that isn't recorded there. -->
+        <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0" PrivateAssets="all"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <AdditionalFiles Include="PublicAPI.Shipped.txt"/>
+        <AdditionalFiles Include="PublicAPI.Unshipped.txt"/>
     </ItemGroup>
 
     <ItemGroup>
