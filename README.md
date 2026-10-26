@@ -1,27 +1,28 @@
 # OpenXmlMailMerge
 
-[![CI](https://github.com/vagnerlucas/OpenXMLMailMerge/actions/workflows/ci.yml/badge.svg)](https://github.com/vagnerlucas/OpenXMLMailMerge/actions/workflows/ci.yml)
+[![CI](https://github.com/vagnerlucas/OpenXMLMailMerge/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vagnerlucas/OpenXMLMailMerge/actions/workflows/ci.yml?query=branch%3Amain)
 
 Merge data into Word (`.docx`) templates. You design the template in Microsoft Word using `MERGEFIELD` fields, and the
 library replaces those fields with text, images or tables. It's built on
 the [Open XML SDK](https://github.com/dotnet/Open-XML-SDK), so Word doesn't need to be installed.
 
-> **Status: pre-release (`0.x`).** The engine is being rewritten. The public API will change before `1.0`, and the
-> current version has known limitations (see below). It isn't published on NuGet yet.
+> **Status: pre-release (`0.x`).** The public API will change before `1.0`, and the current version has known
+> limitations (see below). It isn't published on NuGet yet.
 
 ## What it does
 
-| Binding | You supply              | The field becomes                                  |
-|---------|-------------------------|----------------------------------------------------|
-| `Text`  | `string`                | The text value                                     |
-| `Image` | `byte[]`                | An inline picture                                  |
-| `Table` | `System.Data.DataTable` | A table with a header row and one row per data row |
+| Binding | You supply                                          | The field becomes                                                          |
+|---------|-----------------------------------------------------|----------------------------------------------------------------------------|
+| `Text`  | Any value (text, numbers, dates)                    | The value as text, formatted in the template's language                    |
+| `Image` | `byte[]` of a PNG, JPEG, GIF, BMP, TIFF, EMF or WMF | An inline picture at the image's own size                                  |
+| `Table` | `System.Data.DataTable`                             | A table with a header row and one row per data row, styled by the template |
 
 Fields are processed in the document body, headers and footers.
 
 ## Requirements
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) (pinned in `global.json`)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) to build (pinned in `global.json`).
+- The library targets `net10.0`, so applications that use it need .NET 10.
 
 ## Build and test
 
@@ -29,6 +30,10 @@ Fields are processed in the document body, headers and footers.
 dotnet build
 dotnet test
 ```
+
+Every test that merges a document also validates it against the Open XML schema. The merged documents are kept in
+`tests/OpenXmlMailMerge.Tests/bin/Debug/net10.0/Output/`, one per test, so you can open them in Word. CI runs the tests
+on Linux, Windows and macOS, and attaches those documents to each run.
 
 To produce a local NuGet package:
 
@@ -45,10 +50,22 @@ dotnet pack src/OpenXmlMailMerge -c Release -o artifacts
 `tests/OpenXmlMailMerge.Tests/Fixtures/BIND.docx` is a working example with fields in the body, header and footer.
 
 A binding key matches a field when it equals the field's name exactly, ignoring case: `CustomerName` matches
-`«CustomerName»` but not `«CustomerNameFull»`. For images, parameters after `@` aren't part of the name, so `Logo` matches
-`Logo@WIDTH=120`. A bound field is replaced at its position (text and images keep the field's formatting), and its field
-code is removed. Fields without a binding are left as they are. Fields saved by Word as simple fields (`w:fldSimple`) and
-as complex fields (`w:fldChar`, spread over several runs) are both merged.
+`«CustomerName»` but not `«CustomerNameFull»`. A bound field is replaced at its position (text and images keep the
+field's formatting), and its field code is removed. Fields without a binding are left as they are. Fields saved by Word
+as simple fields (`w:fldSimple`) and as complex fields (`w:fldChar`, spread over several runs) are both merged.
+
+### Field parameters
+
+Images and tables accept parameters after the field name, each starting with `@`. They aren't part of the name, so the
+key `Logo` matches the field `Logo@WIDTH=120`. Parameter names ignore case.
+
+| Parameter         | Applies to | Example                    |
+|-------------------|------------|----------------------------|
+| `WIDTH`, `HEIGHT` | Images     | `Logo@WIDTH=120@HEIGHT=80` |
+| `STYLE`           | Tables     | `Items@STYLE=GridTable4`   |
+
+To add parameters to a field already in the template, show the field codes in Word (**Alt+F9**, or **Option+F9** on a
+Mac), edit the text after `MERGEFIELD`, then press the same keys to hide the codes again.
 
 ### Images
 
@@ -115,6 +132,9 @@ Use one `OxMailMerge` instance per document. Instances aren't thread-safe.
 
 - **Nested and multi-paragraph fields are left as they are.** A merge field nested in another field
   (`{ IF { MERGEFIELD Name } ... }`) or spread over more than one paragraph isn't merged.
+- **Footnotes and endnotes aren't merged.** Only the body, headers and footers are.
+- **`Process()` needs at least one binding.** With none, it throws `InvalidOperationException` instead of leaving the
+  document as it is.
 - **Some images get a default size of 42×42 px** unless the field name sets one: a WMF without the placeable header
   (it carries no physical size), and any image whose header can't be read. Bytes in a format the library doesn't
   recognize are embedded as they are and labelled `image/jpeg`, which Word can't display.
@@ -129,9 +149,11 @@ Use one `OxMailMerge` instance per document. Instances aren't thread-safe.
 ## Roadmap
 
 - A stateless API: `Merge(template, data) → document`
-- Merge fields nested in other fields (`IF`, `INCLUDETEXT`, ...)
+- Resource limits for untrusted templates ([S4](docs/SECURITY.md))
 - Deterministic ids for images and relationships
 - Repeating regions (`TableStart:Name` / `TableEnd:Name`) that reuse a styled template row
+- Merge fields nested in other fields (`IF`, `INCLUDETEXT`, ...), footnotes and endnotes
+- Image resolution (DPI)
 - Golden-file tests and an option to validate output at runtime
 
 ## How this refactor was made
@@ -143,14 +165,14 @@ along the way. Claude reviewed the old code, proposed the plan, and wrote most o
 In short, the project moved to modern .NET with an SDK-style layout and gained:
 
 - in-memory processing with async I/O;
-- exact field-name matching;
-- images and tables placed and sized correctly;
+- exact field-name matching, for simple and complex fields;
+- images and tables placed where their field is, with images at their own size in every supported format;
+- tables and values that follow the template's formatting, styles and language;
 - a smaller public API;
-- a test suite that validates every document it produces.
+- a test suite that validates every document it produces, with CI on Linux, Windows and macOS.
 
 > *A note from Claude:* every bug fixed here was reproduced first, and the new tests were run against the old code to
-> show what they catch. What isn't fixed yet is listed under Known limitations, not hidden. Thanks for asking for blunt
-> reviews, Vagner, and for pushing back when something looked off.
+> show what they catch. What isn't fixed yet is listed under Known limitations, not hidden.
 > — Claude (Opus 5.5), Anthropic
 
 ## Security
@@ -160,3 +182,6 @@ Please report vulnerabilities privately. See [docs/SECURITY.md](docs/SECURITY.md
 ## License
 
 [MIT](LICENSE) © 2016–2026 Vagner Lucas
+
+The sample images used by the tests come from other projects under their own licenses (public domain, CC0, libtiff and
+Apache-2.0). See [tests/OpenXmlMailMerge.Tests/Fixtures/Images/README.md](tests/OpenXmlMailMerge.Tests/Fixtures/Images/README.md).
